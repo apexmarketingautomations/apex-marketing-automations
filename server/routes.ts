@@ -56,6 +56,7 @@ import { registerPublicFormsRoutes } from "./routes/publicForms";
 import { registerApifyTransportRoutes } from "./routes/apifyTransport";
 import { registerArrestRoutes } from "./routes/arrests";
 import { registerHillsboroughRoutes } from "./routes/hillsborough";
+import { registerDynamicPagesRoutes } from "./routes/dynamicPages";
 export { registerAgentWorkerRoutes } from "./routes/agentWorker";
 
 export async function registerRoutes(
@@ -99,6 +100,7 @@ export async function registerRoutes(
   });
 
   registerAuthRoutes(app);
+  registerDynamicPagesRoutes(app);
   registerSitesRoutes(app);
   registerFunnelRoutes(app);
   registerAdminRoutes(app);

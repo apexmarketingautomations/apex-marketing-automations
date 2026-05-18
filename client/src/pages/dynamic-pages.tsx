@@ -1,4 +1,4 @@
-import { Suspense, useRef, useState, useMemo } from "react";
+import { Suspense, useRef, useState, useMemo, useCallback } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import {
   OrbitControls,
@@ -17,6 +17,10 @@ import * as THREE from "three";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { PromptDesignPanel } from "@/components/dynamic-pages/PromptDesignPanel";
+import { DynamicPageRenderer } from "@/components/dynamic-pages/DynamicPageRenderer";
+import type { DynamicPageSchema } from "@/lib/dynamic-pages/schema";
+import { useAuth } from "@/hooks/use-auth";
 import {
   Sparkles, Globe, Layers, Zap, Plus, Eye, Download, Share2,
   LayoutTemplate, ArrowRight, Search, ChevronDown, X,
@@ -354,6 +358,9 @@ function TemplateCard({ template, selected, onSelect }: { template: TemplateItem
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function DynamicPages() {
+  const { user } = useAuth();
+  const isAdmin = user?.isAdmin === "true" || (user as any)?.role === "DEV_ADMIN";
+
   const [selectedTemplate, setSelectedTemplate] = useState(TEMPLATES[0].id);
   const [tab, setTab] = useState<"templates" | "builder">("templates");
   const [pageName, setPageName] = useState("");
@@ -362,8 +369,16 @@ export default function DynamicPages() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generated, setGenerated] = useState(false);
   const [showCatMenu, setShowCatMenu] = useState(false);
+  const [currentSchema, setCurrentSchema] = useState<DynamicPageSchema | null>(null);
+  const [previewSchema, setPreviewSchema] = useState(false);
 
   const activeTemplate = TEMPLATES.find(t => t.id === selectedTemplate) ?? TEMPLATES[0];
+
+  const handleSchemaUpdate = useCallback((schema: DynamicPageSchema) => {
+    setCurrentSchema(schema);
+    setGenerated(true);
+    if (tab === "templates") setTab("builder");
+  }, [tab]);
 
   const filtered = useMemo(() => {
     return TEMPLATES.filter(t => {
@@ -400,9 +415,12 @@ export default function DynamicPages() {
           </Badge>
           {generated && (
             <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="flex gap-2">
-              <Button size="sm" variant="ghost" className="text-white/60 hover:text-white h-7 text-xs gap-1">
-                <Eye className="w-3 h-3" /> Preview
-              </Button>
+              {currentSchema && (
+                <Button size="sm" variant="ghost" onClick={() => setPreviewSchema(v => !v)}
+                  className="text-white/60 hover:text-white h-7 text-xs gap-1">
+                  <Eye className="w-3 h-3" /> {previewSchema ? "3D View" : "Full Preview"}
+                </Button>
+              )}
               <Button size="sm" variant="ghost" className="text-white/60 hover:text-white h-7 text-xs gap-1">
                 <Share2 className="w-3 h-3" /> Publish
               </Button>
@@ -500,7 +518,15 @@ export default function DynamicPages() {
 
           {tab === "builder" && (
             <div className="flex-1 overflow-y-auto p-3 space-y-3">
-              <p className="text-white/40 text-xs px-1">Add sections</p>
+              {/* Prompt-driven design panel */}
+              <PromptDesignPanel
+                currentSchema={currentSchema}
+                onSchemaUpdate={handleSchemaUpdate}
+                isAdmin={isAdmin}
+              />
+
+              <div className="border-t border-white/5 pt-3">
+                <p className="text-white/40 text-xs px-1 mb-2">Or add sections manually</p>
               {[
                 { label: "3D Hero", icon: Globe, desc: "Interactive WebGL hero" },
                 { label: "Feature Grid", icon: Layers, desc: "Animated feature cards" },
@@ -527,12 +553,19 @@ export default function DynamicPages() {
                   <Plus className="w-3.5 h-3.5 text-white/30 ml-auto" />
                 </motion.div>
               ))}
+              </div>
             </div>
           )}
         </div>
 
-        {/* 3D Canvas */}
+        {/* 3D Canvas / Schema Preview */}
         <div className="flex-1 relative overflow-hidden">
+          {/* Schema-driven full page preview when a prompt schema exists */}
+          {currentSchema && previewSchema ? (
+            <div className="absolute inset-0 overflow-y-auto">
+              <DynamicPageRenderer schema={currentSchema} isPreview heroHeight="400px" />
+            </div>
+          ) : (
           <Canvas camera={{ position: [0, 0, 8], fov: 60 }} gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }} dpr={[1, 2]}>
             <Suspense fallback={null}>
               <Scene template={activeTemplate} />
@@ -540,55 +573,80 @@ export default function DynamicPages() {
                 maxPolarAngle={Math.PI / 1.8} minPolarAngle={Math.PI / 3} />
             </Suspense>
           </Canvas>
+          )}
 
-          {/* Overlay */}
-          <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-            <AnimatePresence mode="wait">
-              {!generated ? (
-                <motion.div key="idle" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="text-center px-8">
-                  <motion.div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs border mb-4"
-                    style={{ borderColor: activeTemplate.color + "44", color: activeTemplate.color, backgroundColor: activeTemplate.color + "11" }}>
-                    <activeTemplate.icon className="w-3 h-3" />
-                    {activeTemplate.name}
+          {/* Overlay — hidden when showing full page preview */}
+          {!previewSchema && (
+            <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
+              <AnimatePresence mode="wait">
+                {!generated ? (
+                  <motion.div key="idle" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="text-center px-8">
+                    <motion.div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs border mb-4"
+                      style={{ borderColor: activeTemplate.color + "44", color: activeTemplate.color, backgroundColor: activeTemplate.color + "11" }}>
+                      <activeTemplate.icon className="w-3 h-3" />
+                      {activeTemplate.name}
+                    </motion.div>
+                    <motion.h2 className="text-4xl font-black text-white mb-2"
+                      style={{ textShadow: `0 0 60px ${activeTemplate.color}99` }}
+                      animate={{ opacity: [0.8, 1, 0.8] }} transition={{ duration: 3, repeat: Infinity }}>
+                      {activeTemplate.category}
+                    </motion.h2>
+                    <p className="text-white/50 text-sm max-w-xs mx-auto">{activeTemplate.desc}</p>
+                    <div className="flex gap-2 justify-center mt-4 flex-wrap">
+                      {activeTemplate.tags.map(tag => (
+                        <Badge key={tag} className="text-[10px]" style={{ backgroundColor: activeTemplate.color + "22", borderColor: activeTemplate.color + "44", color: activeTemplate.color }}>{tag}</Badge>
+                      ))}
+                    </div>
                   </motion.div>
-                  <motion.h2 className="text-4xl font-black text-white mb-2"
-                    style={{ textShadow: `0 0 60px ${activeTemplate.color}99` }}
-                    animate={{ opacity: [0.8, 1, 0.8] }} transition={{ duration: 3, repeat: Infinity }}>
-                    {activeTemplate.category}
-                  </motion.h2>
-                  <p className="text-white/50 text-sm max-w-xs mx-auto">{activeTemplate.desc}</p>
-                  <div className="flex gap-2 justify-center mt-4 flex-wrap">
-                    {activeTemplate.tags.map(tag => (
-                      <Badge key={tag} className="text-[10px]" style={{ backgroundColor: activeTemplate.color + "22", borderColor: activeTemplate.color + "44", color: activeTemplate.color }}>{tag}</Badge>
-                    ))}
-                  </div>
-                </motion.div>
-              ) : (
-                <motion.div key="done" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center pointer-events-auto">
-                  <motion.div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
-                    style={{ backgroundColor: activeTemplate.color + "22", border: `1px solid ${activeTemplate.color}44` }}
-                    animate={{ boxShadow: [`0 0 20px ${activeTemplate.color}44`, `0 0 40px ${activeTemplate.color}88`, `0 0 20px ${activeTemplate.color}44`] }}
-                    transition={{ duration: 2, repeat: Infinity }}>
-                    <Sparkles className="w-8 h-8" style={{ color: activeTemplate.color }} />
+                ) : (
+                  <motion.div key="done" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center pointer-events-auto">
+                    <motion.div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
+                      style={{ backgroundColor: activeTemplate.color + "22", border: `1px solid ${activeTemplate.color}44` }}
+                      animate={{ boxShadow: [`0 0 20px ${activeTemplate.color}44`, `0 0 40px ${activeTemplate.color}88`, `0 0 20px ${activeTemplate.color}44`] }}
+                      transition={{ duration: 2, repeat: Infinity }}>
+                      <Sparkles className="w-8 h-8" style={{ color: activeTemplate.color }} />
+                    </motion.div>
+                    <h3 className="text-3xl font-bold text-white mb-2">
+                      {currentSchema?.meta?.title ?? pageName ?? activeTemplate.name} is ready
+                    </h3>
+                    <p className="text-white/50 text-sm mb-4">
+                      {currentSchema ? "AI page generated · WebGL scene live" : "3D scene built · Animations wired"} · Ready to publish
+                    </p>
+                    <div className="flex gap-2 justify-center">
+                      {currentSchema && (
+                        <Button size="sm" variant="outline" onClick={() => setPreviewSchema(true)}
+                          className="border-white/20 text-white/70 hover:text-white gap-1.5 text-xs">
+                          <Eye className="w-3.5 h-3.5" /> Full Preview
+                        </Button>
+                      )}
+                      <Button size="sm" variant="outline" className="border-white/20 text-white/70 hover:text-white gap-1.5 text-xs">
+                        <Eye className="w-3.5 h-3.5" /> Live Preview
+                      </Button>
+                      <Button size="sm" className="gap-1.5 text-xs" style={{ backgroundColor: activeTemplate.color }}>
+                        <ArrowRight className="w-3.5 h-3.5" /> Publish Now
+                      </Button>
+                    </div>
                   </motion.div>
-                  <h3 className="text-3xl font-bold text-white mb-2">{pageName || activeTemplate.name} is ready</h3>
-                  <p className="text-white/50 text-sm mb-4">3D scene built · Animations wired · Ready to publish</p>
-                  <div className="flex gap-2 justify-center">
-                    <Button size="sm" variant="outline" className="border-white/20 text-white/70 hover:text-white gap-1.5 text-xs">
-                      <Eye className="w-3.5 h-3.5" /> Live Preview
-                    </Button>
-                    <Button size="sm" className="gap-1.5 text-xs" style={{ backgroundColor: activeTemplate.color }}>
-                      <ArrowRight className="w-3.5 h-3.5" /> Publish Now
-                    </Button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {/* Exit full preview */}
+          {previewSchema && (
+            <div className="absolute top-4 right-4 z-10">
+              <Button size="sm" onClick={() => setPreviewSchema(false)}
+                className="bg-black/60 backdrop-blur-sm border border-white/20 text-white hover:bg-black/80 gap-1.5 text-xs">
+                <X className="w-3.5 h-3.5" /> Exit Preview
+              </Button>
+            </div>
+          )}
 
           <div className="absolute bottom-4 left-4 flex items-center gap-2 pointer-events-none">
             <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            <span className="text-white/40 text-xs">WebGL Active · Drag to explore · {TEMPLATES.length} templates</span>
+            <span className="text-white/40 text-xs">
+              {currentSchema ? `AI Generated · ${currentSchema.meta.niche.replace(/_/g, " ")} · WebGL Active` : `WebGL Active · Drag to explore · ${TEMPLATES.length} templates`}
+            </span>
           </div>
         </div>
       </div>

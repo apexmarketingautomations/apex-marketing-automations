@@ -1,0 +1,257 @@
+/**
+ * server/services/aiPromptToPageSchema.ts
+ *
+ * AI-driven page schema generation and patching.
+ * Calls aiChat (Anthropic → Groq fallback) to produce a DynamicPageSchema from a prompt.
+ */
+
+import { aiChat } from "../aiGateway";
+import { parsePromptIntent } from "./visualPromptParser";
+import type { DynamicPageSchema, WebGLSceneSchema, SceneObject, SectionSchema } from "../../client/src/lib/dynamic-pages/schema";
+
+// ── Shared alias so server can import the client schema types ─────────────────
+
+// Inline the core defaults (avoid circular import from client/src)
+const NOW = () => new Date().toISOString();
+
+function randomId(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+// ── System prompt ─────────────────────────────────────────────────────────────
+
+const SCHEMA_SYSTEM_PROMPT = `You are an expert web designer and funnel architect AI for Apex Marketing OS.
+
+Your job is to generate a DynamicPageSchema JSON object from a user's prompt.
+
+RULES:
+1. Return ONLY valid JSON — no markdown, no code blocks, no explanations.
+2. Generate compelling, niche-specific copy (headline, subheadline, sections, CTA text).
+3. For the WebGL scene: use procedural primitives only (orb, torus, box, cone, cylinder, ring).
+   - Label objects semantically (e.g. label:"giraffe" but type:"orb").
+   - Do NOT claim real 3D models exist — use the label field to record what was requested.
+   - Max 6 objects. Max particle count 1200.
+4. Colors must be valid hex strings (#rrggbb).
+5. The schema must match this structure exactly:
+{
+  "version": "1.0",
+  "id": "<uuid>",
+  "meta": { "title": string, "slug": string, "niche": string, "businessType": string, "prompt": string, "createdAt": string, "updatedAt": string },
+  "theme": { "colors": { "primary": "#hex", "secondary": "#hex", "accent": "#hex", "background": "#hex", "surface": "#hex", "text": "#hex", "textMuted": "#hex" }, "style": string, "motion": string, "font": "Inter" },
+  "copy": { "headline": string, "subheadline": string, "body": string, "seoTitle": string, "seoDescription": string },
+  "scene": {
+    "sceneType": "custom_prompt_scene",
+    "prompt": string,
+    "environment": string,
+    "objects": [{ "id": string, "label": string, "type": "orb"|"torus"|"box"|"cone"|"cylinder"|"ring", "style": string, "props": string[], "position": [x,y,z], "scale": [x,y,z], "animation": "slow_float"|"orbit"|"spin"|"idle"|"bob"|"pulse"|"drift"|"wave", "color": "#hex", "emissive": "#hex", "material": "distort"|"wobble"|"standard"|"glass"|"metallic"|"emissive", "distort": 0.0-1.0, "opacity": 0.5-1.0 }],
+    "particles": { "type": "stars"|"rain"|"snow"|"dust"|"sparks"|"bubbles"|"leaves", "density": "low"|"medium"|"high", "speed": 0.1-3.0, "color": "#hex", "count": 200-1200, "size": 0.01-0.1 },
+    "lighting": { "type": "neon_rim"|"warm_studio"|"cool_ambient"|"dramatic"|"sunset"|"medical"|"neutral", "colors": ["#hex","#hex","#hex"], "intensity": 0.5-3.0, "ambientIntensity": 0.1-1.0 },
+    "camera": { "mode": "slow_orbit"|"fixed"|"gentle_sway"|"cinematic_pan"|"static", "intensity": 0.1-2.0, "fov": 45-90 },
+    "postProcessing": { "bloom": bool, "bloomIntensity": 0.5-3.0, "chromaticAberration": bool, "vignette": bool, "vignetteIntensity": 0.3-1.0 }
+  },
+  "sections": [{ "id": string, "type": "hero"|"features"|"testimonials"|"faq"|"cta_banner"|"services"|"team"|"gallery"|"pricing"|"contact"|"stats"|"process", "title": string, "subtitle": string, "body": string, "items": [{"title":string,"body":string}], "visible": true, "order": 0 }],
+  "cta": { "primaryText": string, "primaryUrl": "#contact", "secondaryText": string, "secondaryUrl": "#learn-more", "animation": "none"|"pulse"|"glow"|"bounce"|"shimmer", "color": "#hex" },
+  "forms": [{ "id": string, "title": string, "submitText": string, "fields": [{"name":string,"label":string,"type":"text"|"email"|"phone"|"textarea","required":bool}], "crmTag": string }],
+  "analytics": { "pageType": "landing", "niche": string, "funnelStage": "awareness"|"consideration"|"conversion", "trackingEvents": ["page_view","cta_click","form_submit"] },
+  "crm": { "leadSource": "dynamic-page", "automationTag": string, "assignedWorkflow": string },
+  "publish": { "published": false, "slug": string, "canonicalUrl": "" }
+}`;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function extractJSON(raw: string): string {
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start === -1 || end === -1) throw new Error("No JSON found in AI response");
+  return raw.slice(start, end + 1);
+}
+
+function buildFallbackSchema(prompt: string, intent: ReturnType<typeof parsePromptIntent>): DynamicPageSchema {
+  const id = randomId();
+  const now = NOW();
+  const slug = intent.niche.replace(/_/g, "-").toLowerCase() + "-page";
+  const primary = intent.colors[0] ?? "#6366f1";
+  const secondary = intent.colors[1] ?? "#a855f7";
+
+  return {
+    version: "1.0",
+    id,
+    meta: { title: intent.businessType.replace(/_/g, " "), slug, niche: intent.niche, businessType: intent.businessType, prompt, createdAt: now, updatedAt: now },
+    theme: {
+      colors: { primary, secondary, accent: intent.colors[2] ?? "#06b6d4", background: "#030712", surface: "#0f172a", text: "#f8fafc", textMuted: "#94a3b8" },
+      style: intent.style as any,
+      motion: intent.motion as any,
+      font: "Inter",
+    },
+    copy: {
+      headline: `${intent.businessType.replace(/_/g, " ")} — Powered by AI`,
+      subheadline: "Automate. Convert. Grow.",
+      body: "We help businesses like yours scale with AI-powered tools and proven conversion funnels.",
+      seoTitle: `${intent.businessType.replace(/_/g, " ")} | Apex`,
+      seoDescription: `${intent.niche} AI automation and funnel solutions`,
+    },
+    scene: {
+      sceneType: "procedural",
+      prompt,
+      environment: intent.environment as any,
+      objects: buildDefaultObjects(intent),
+      particles: { type: "stars", density: "medium", speed: 1, color: primary, count: 800, size: 0.04 },
+      lighting: { type: intent.lighting as any, colors: [primary, secondary, "#818cf8"], intensity: 2, ambientIntensity: 0.3 },
+      camera: { mode: "slow_orbit", intensity: 0.5, fov: 60 },
+      postProcessing: { bloom: true, bloomIntensity: 1.5, chromaticAberration: true, vignette: true, vignetteIntensity: 0.8 },
+    },
+    sections: buildDefaultSections(intent),
+    cta: { primaryText: ctaText(intent.ctaIntent), primaryUrl: "#contact", animation: "pulse", color: primary },
+    forms: [{ id: "main-form", title: "Get Started", submitText: "Submit", fields: [{ name: "name", label: "Your Name", type: "text", required: true }, { name: "email", label: "Email", type: "email", required: true }, { name: "phone", label: "Phone", type: "phone", required: false }], crmTag: `${intent.niche}-lead` }],
+    analytics: { pageType: "landing", niche: intent.niche, funnelStage: "conversion", trackingEvents: ["page_view", "cta_click", "form_submit"] },
+    crm: { leadSource: "dynamic-page", automationTag: `${intent.niche}-lead`, assignedWorkflow: `${intent.niche}-followup` },
+    publish: { published: false, slug },
+  } as DynamicPageSchema;
+}
+
+function ctaText(intent: string): string {
+  const map: Record<string, string> = {
+    booking: "Book Free Consultation", quote: "Get Free Quote", purchase: "Shop Now",
+    consultation: "Schedule a Call", learn: "Learn More", contact: "Get Started Today",
+  };
+  return map[intent] ?? "Get Started Free";
+}
+
+function buildDefaultObjects(intent: ReturnType<typeof parsePromptIntent>): SceneObject[] {
+  const primary = intent.colors[0] ?? "#6366f1";
+  const secondary = intent.colors[1] ?? "#a855f7";
+  const objs: SceneObject[] = [
+    { id: "orb-1", label: intent.objects[0] ?? "orb", type: "orb", style: "cinematic_3d", props: [], position: [-3.5, 1, -2], scale: [1, 1, 1], animation: "slow_float", color: primary, emissive: primary, material: "distort", distort: 0.5, opacity: 0.85 },
+    { id: "orb-2", label: intent.objects[1] ?? "orb", type: "orb", style: "cinematic_3d", props: [], position: [3.5, -1, -1], scale: [1, 1, 1], animation: "slow_float", color: secondary, material: "distort", distort: 0.3, opacity: 0.85 },
+    { id: "torus-1", label: "ring", type: "torus", style: "metallic", props: [], position: [-2, -2, 0], scale: [1, 1, 1], animation: "slow_float", color: secondary, material: "wobble", wobbleFactor: 0.4 },
+  ];
+  return objs;
+}
+
+function buildDefaultSections(intent: ReturnType<typeof parsePromptIntent>): SectionSchema[] {
+  const niceName = intent.businessType.replace(/_/g, " ");
+  return [
+    { id: "hero", type: "hero", title: `${niceName} — AI-Powered`, subtitle: "The modern way to grow your business", visible: true, order: 0 },
+    { id: "features", type: "features", title: "What We Offer", items: [{ title: "AI Automation", body: "Workflows that convert around the clock" }, { title: "Lead Capture", body: "Smart forms that qualify prospects" }, { title: "Follow-Up", body: "Personalized outreach at scale" }], visible: true, order: 1 },
+    { id: "cta-banner", type: "cta_banner", title: "Ready to grow?", subtitle: "Join thousands of businesses using Apex.", visible: true, order: 2 },
+  ];
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
+export async function generatePageSchema(prompt: string, subAccountId?: number): Promise<DynamicPageSchema> {
+  const intent = parsePromptIntent(prompt);
+  const id = randomId();
+  const now = NOW();
+
+  const userMessage = `Generate a complete DynamicPageSchema for this prompt: "${prompt}"
+
+Context from parser:
+- niche: ${intent.niche}
+- businessType: ${intent.businessType}
+- environment: ${intent.environment}
+- style: ${intent.style}
+- objects requested: ${intent.objects.join(", ") || "none"}
+- colors: ${intent.colors.join(", ") || "pick appropriate"}
+- motion: ${intent.motion}
+
+Generate a compelling, on-brand page schema. Make the copy specific and persuasive. Make the scene visually striking. Return ONLY the JSON.`;
+
+  try {
+    const response = await aiChat(
+      [
+        { role: "system", content: SCHEMA_SYSTEM_PROMPT },
+        { role: "user", content: userMessage },
+      ],
+      { temperature: 0.8, maxTokens: 4096, jsonMode: true, timeoutMs: 30000 }
+    );
+
+    if (!response.ok || !response.text) {
+      console.warn("[AI-PAGE-SCHEMA] AI call failed, using fallback schema");
+      return buildFallbackSchema(prompt, intent);
+    }
+
+    const raw = extractJSON(response.text);
+    const parsed = JSON.parse(raw) as DynamicPageSchema;
+
+    // Ensure required fields
+    parsed.version = "1.0";
+    parsed.id = parsed.id || id;
+    parsed.meta = parsed.meta || {} as any;
+    parsed.meta.prompt = prompt;
+    parsed.meta.createdAt = now;
+    parsed.meta.updatedAt = now;
+    if (subAccountId) parsed.meta.subAccountId = subAccountId;
+    if (parsed.publish) parsed.publish.published = false;
+
+    return parsed;
+  } catch (err) {
+    console.error("[AI-PAGE-SCHEMA] Error:", err instanceof Error ? err.message : err);
+    return buildFallbackSchema(prompt, intent);
+  }
+}
+
+export async function patchExistingPageSchema(existingSchema: DynamicPageSchema, prompt: string): Promise<DynamicPageSchema> {
+  const intent = parsePromptIntent(prompt);
+  const now = NOW();
+
+  const userMessage = `You have this existing page schema:
+${JSON.stringify(existingSchema, null, 2)}
+
+The user wants to make this change: "${prompt}"
+
+Patch the schema minimally — only change what the user asked for. Preserve everything else.
+Return the COMPLETE updated schema as JSON.`;
+
+  try {
+    const response = await aiChat(
+      [
+        { role: "system", content: SCHEMA_SYSTEM_PROMPT },
+        { role: "user", content: userMessage },
+      ],
+      { temperature: 0.5, maxTokens: 4096, jsonMode: true, timeoutMs: 30000 }
+    );
+
+    if (!response.ok || !response.text) {
+      console.warn("[AI-PAGE-SCHEMA] Patch AI call failed, returning existing schema");
+      return existingSchema;
+    }
+
+    const raw = extractJSON(response.text);
+    const patched = JSON.parse(raw) as DynamicPageSchema;
+    patched.meta = { ...existingSchema.meta, ...patched.meta, updatedAt: now };
+    return patched;
+  } catch {
+    return existingSchema;
+  }
+}
+
+export async function generatePageCopy(prompt: string, niche: string): Promise<{ headline: string; subheadline: string; body: string; ctaText: string }> {
+  try {
+    const response = await aiChat(
+      [
+        { role: "system", content: "Generate concise web copy. Return JSON only: {headline, subheadline, body, ctaText}" },
+        { role: "user", content: `Write compelling landing page copy for: "${prompt}" in the ${niche} industry.` },
+      ],
+      { temperature: 0.9, maxTokens: 500, jsonMode: true }
+    );
+    if (response.ok && response.text) {
+      const raw = extractJSON(response.text);
+      return JSON.parse(raw);
+    }
+  } catch {}
+  return { headline: "Grow Your Business with AI", subheadline: "Automation. Leads. Results.", body: "We help you scale.", ctaText: "Get Started" };
+}
+
+export async function generateScenePlan(prompt: string): Promise<WebGLSceneSchema> {
+  const schema = await generatePageSchema(prompt);
+  return schema.scene;
+}
+
+export async function validateSceneBudget(scene: WebGLSceneSchema): Promise<{ valid: boolean; warnings: string[] }> {
+  const warnings: string[] = [];
+  if (scene.objects.length > 8) warnings.push(`Too many objects: ${scene.objects.length} (max 8)`);
+  if ((scene.particles.count ?? 0) > 1500) warnings.push(`Particle count ${scene.particles.count} may cause performance issues on mobile`);
+  if (scene.postProcessing.bloom && (scene.postProcessing.bloomIntensity ?? 0) > 3) warnings.push("Bloom intensity > 3 may cause visual artifacts");
+  return { valid: warnings.length === 0, warnings };
+}
