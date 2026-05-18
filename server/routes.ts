@@ -1,7 +1,7 @@
 // @ts-nocheck
 import type { Express } from "express";
 import { createServer, type Server } from "http";
-import { asyncHandler } from "./routes/helpers";
+import { asyncHandler, requireAdmin } from "./routes/helpers";
 
 import { registerSitesRoutes } from "./routes/sites";
 import { registerFunnelRoutes } from "./routes/funnel";
@@ -263,18 +263,26 @@ export async function registerRoutes(
     });
   }));
 
-  app.patch("/api/cases/:id", asyncHandler(async (req, res) => {
+  app.patch("/api/cases/:id", requireAdmin, asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) return res.status(400).json({ error: "invalid id" });
+    const { z } = await import("zod");
+    const parsed = z.object({
+      status:        z.string().optional(),
+      operatorNotes: z.string().optional(),
+      aiSummary:     z.string().optional(),
+      outreachAngle: z.string().optional(),
+    }).strict().safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
     const { db } = await import("./db");
     const { intelligenceCases } = await import("@shared/schema");
     const { eq } = await import("drizzle-orm");
-    const { status, operatorNotes, aiSummary, outreachAngle } = req.body as Record<string, string>;
     const update: Record<string, any> = { updatedAt: new Date() };
-    if (status)        update.status        = status;
-    if (operatorNotes !== undefined) update.operatorNotes = operatorNotes;
-    if (aiSummary)     update.aiSummary     = aiSummary;
-    if (outreachAngle) update.outreachAngle = outreachAngle;
+    const body = parsed.data;
+    if (body.status)        update.status        = body.status;
+    if (body.operatorNotes !== undefined) update.operatorNotes = body.operatorNotes;
+    if (body.aiSummary)     update.aiSummary     = body.aiSummary;
+    if (body.outreachAngle) update.outreachAngle = body.outreachAngle;
     const [updated] = await db.update(intelligenceCases).set(update).where(eq(intelligenceCases.id, id)).returning();
     if (!updated) return res.status(404).json({ error: "not found" });
     res.json({ ok: true, case: updated });
@@ -312,9 +320,6 @@ export async function registerRoutes(
   app.get("/api/ai/status", asyncHandler(async (req, res) => {
     const { isAIConfigured, isOpenAIConfigured, isAnthropicConfigured, getAIProviderStatus } = await import("./aiGateway");
     const { isGeminiConfigured } = await import("./gemini");
-    const anthropicKey = (process.env.ANTHROPIC_API_KEY || "").trim();
-    const openaiKey    = process.env.OPENAI_APEX_INT_KEY;
-    const geminiKey    = process.env.Gemini_API_Key_saas;
     const status       = getAIProviderStatus();
     res.json({
       configured:     isAIConfigured(),
@@ -327,25 +332,16 @@ export async function registerRoutes(
       providers: {
         anthropic: {
           configured: isAnthropicConfigured(),
-          keyPresent: anthropicKey.length > 10,
-          keyPrefix:  anthropicKey.length > 10 ? anthropicKey.slice(0, 12) + "..." : null,
-          envVar:     "ANTHROPIC_API_KEY",
           model:      "claude-sonnet-4-20250514",
           priority:   1,
         },
         openai: {
           configured: isOpenAIConfigured(),
-          keyPresent: !!openaiKey,
-          keyPrefix:  openaiKey ? openaiKey.slice(0, 7) + "..." : null,
-          envVar:     "OPENAI_APEX_INT_KEY",
           model:      "gpt-4o-mini",
           priority:   2,
         },
         gemini: {
           configured: isGeminiConfigured(),
-          keyPresent: !!geminiKey,
-          keyPrefix:  geminiKey ? geminiKey.slice(0, 6) + "..." : null,
-          envVar:     "Gemini_API_Key_saas",
           model:      "gemini-2.5-flash",
           priority:   3,
         },

@@ -16,7 +16,7 @@ import {
   alertExpiryStatus,
 } from "../sentinel-home-svc";
 import type { HomeSvcSignal, HomeSvcConfigShape } from "../sentinel-home-svc";
-import { asyncHandler, parseIntParam, verifyAccountOwnership, requirePlanFeature } from "./helpers";
+import { asyncHandler, parseIntParam, verifyAccountOwnership, requirePlanFeature, requireAdmin } from "./helpers";
 import { emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 
 // --- Zod schema for CAD ingestion payload ---
@@ -841,7 +841,8 @@ export function registerSentinelRoutes(app: Express) {
   app.get("/api/sentinel/live", asyncHandler(async (req, res) => {
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
-    const subAccountId = parseInt(req.query.subAccountId as string) || 1;
+    const subAccountId = parseIntParam(req.query.subAccountId as string, "subAccountId");
+    if (subAccountId === null) return res.status(400).json({ error: "subAccountId required" });
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const incidents = await storage.getSentinelIncidents(subAccountId);
     const liveFormat = incidents.slice(0, 20).map(inc => ({
@@ -973,7 +974,7 @@ export function registerSentinelRoutes(app: Express) {
 
   // ── Attorney Leads API ──────────────────────────────────────────────────────
 
-  app.get("/api/legal/attorneys", asyncHandler(async (req, res) => {
+  app.get("/api/legal/attorneys", requireAdmin, asyncHandler(async (req, res) => {
     const { db } = await import("../db");
     const { legalAttorneys } = await import("@shared/schema");
     const { desc, sql, ilike } = await import("drizzle-orm");
@@ -996,7 +997,7 @@ export function registerSentinelRoutes(app: Express) {
     res.json({ attorneys, total: attorneys.length });
   }));
 
-  app.post("/api/legal/attorneys/scrape", asyncHandler(async (req, res) => {
+  app.post("/api/legal/attorneys/scrape", requireAdmin, asyncHandler(async (req, res) => {
     const { runFullAttorneyScrape } = await import("../apifyAttorneyScraper");
     // Fire and forget — scrape runs in background
     runFullAttorneyScrape().catch(err =>
@@ -1098,6 +1099,22 @@ export function registerRetroSkipTraceRoute(app: any) {
 
     const { skipTraceLookup } = await import("../skip-trace");
     const result = await skipTraceLookup({ address, city, state, zip, ownerName }, apiKey);
+
+    // Log to execution timeline so admin-triggered skip traces appear in the timeline UI
+    try {
+      emitWithTimeline(
+        {
+          eventType: EVENT_TYPES.SKIP_TRACE_COMPLETED,
+          sourceModule: "manual-skip-trace",
+          sourceTable: "contacts",
+          sourceRecordId: address,
+          subAccountId: 0,
+          metadata: { triggeredBy: userId, address, city, state, zip, ownerName, resultPhone: result.ownerPhone ?? null, totalPersonsFound: result.totalPersonsFound, source: "manual_admin" },
+        },
+        "Manual Skip Trace (Admin)",
+        `Admin-triggered skip trace for ${ownerName || address} → ${result.ownerPhone ?? "no phone found"}`
+      );
+    } catch (_logErr) { /* allow-silent-catch: timeline logging must not block the response */ }
 
     res.json({
       ok: true,
@@ -1440,7 +1457,7 @@ export function registerRetroSkipTraceRoute(app: any) {
   // Returns live status of all FL lead pipelines — useful for the Sentinel UI
   // status panel and for debugging why leads aren't appearing.
 
-  app.get("/api/sentinel/pipeline-status", asyncHandler(async (_req, res) => {
+  app.get("/api/sentinel/pipeline-status", requireAdmin, asyncHandler(async (_req, res) => {
     const nimbleConfigured         = !!(process.env.NIMBLE_API_KEY || process.env.NIMBLE_TOKEN);
     const apifyConfigured          = !!(process.env.APIFY_API_KEY || process.env.APIFY_TOKEN || process.env.APIFY_KEY);
     const batchDataConfigured      = !!(process.env.BATCHDATA_API_KEY || process.env.BATCH_DATA || process.env.BATCHDATA_KEY);
