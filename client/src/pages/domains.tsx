@@ -72,7 +72,8 @@ export default function Domains() {
   const queryClient = useQueryClient();
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_domains");
   const { activeAccountId } = useAccount();
-  const subAccountId = activeAccountId || 13;
+  // [RISK 2026-05-18] Fallback of 13 is a stale legacy value. Should be null/undefined with a proper empty state, not a hardcoded account.
+  const subAccountId = activeAccountId || 13; // TODO: remove hardcoded fallback, show "select account" prompt when no active account
   const [searchQuery, setSearchQuery] = useState("");
   const [checkResult, setCheckResult] = useState<DomainCheckResult | null>(null);
   const [searchResults, setSearchResults] = useState<DomainCheckResult[]>([]);

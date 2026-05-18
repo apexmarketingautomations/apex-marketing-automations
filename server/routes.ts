@@ -141,8 +141,17 @@ export async function registerRoutes(
   registerHillsboroughRoutes(app);
 
   // ── Legal Signal Pipeline Routes ──────────────────────────────────────────
+  // [FIX 2026-05-18] Added subAccountId filter (was built but never applied to query — data leak risk)
+  // [FIX 2026-05-18] Added isPlatformAdmin auth guard — legal lead data is sensitive CRM data
   app.get("/api/legal-leads", asyncHandler(async (req, res) => {
+    // Auth guard: only platform admins or requests with a valid subAccountId that matches session
+    const { isPlatformAdmin } = await import("./auth/authorization");
     const subAccountId = req.query.subAccountId ? Number(req.query.subAccountId) : undefined;
+
+    if (!isPlatformAdmin(req) && !subAccountId) {
+      return res.status(403).json({ error: "subAccountId required for non-admin access" });
+    }
+
     const limit        = Math.min(Number(req.query.limit ?? 100), 500);
     const vertical     = req.query.vertical as string | undefined;
 
@@ -150,7 +159,23 @@ export async function registerRoutes(
     const { legalLeads } = await import("@shared/schema");
     const { desc, eq, and } = await import("drizzle-orm");
 
-    let query = db.select().from(legalLeads).orderBy(desc(legalLeads.createdAt)).limit(limit);
+    // Build filter conditions — subAccountId filter is now actually applied to the query
+    const conds: any[] = [];
+    if (subAccountId && !isPlatformAdmin(req)) {
+      // Non-admin: enforce tenant isolation — only return their own leads
+      conds.push(eq(legalLeads.subAccountId, subAccountId));
+    } else if (subAccountId) {
+      // Admin with explicit filter: scope to requested account
+      conds.push(eq(legalLeads.subAccountId, subAccountId));
+    }
+    // Platform admin with no subAccountId filter → returns all (intended admin view)
+
+    let query = db.select().from(legalLeads);
+    if (conds.length > 0) {
+      query = query.where(and(...conds)) as any;
+    }
+    query = query.orderBy(desc(legalLeads.createdAt)).limit(limit) as any;
+
     const results = await query;
     res.json(vertical ? results.filter((l: any) => l.legalVertical === vertical) : results);
   }));

@@ -16,6 +16,16 @@ import { generateSitemapXml, buildSitemapEntries } from "../services/discoverabi
 import { generateRobotsTxt } from "../services/discoverability/robotsTxtGenerator";
 
 // ── In-memory schema store (TODO: migrate to db table when schema is stable) ──
+// WARNING: This is a volatile in-memory store. All saved schemas are LOST on server restart.
+// [DYNAMIC-PAGES] DO NOT use this in production without DB persistence.
+// Migration path: create a `dynamic_page_schemas` table in shared/schema.ts and move
+// saveSchemaForAccount / getSchemasForAccount to db queries via storage layer.
+// Tracking issue: server restart drops all user-saved pages.
+
+// Emit a startup warning so Railway logs surface this clearly
+if (typeof process !== "undefined") {
+  console.warn("[DYNAMIC-PAGES] Using in-memory schema store — data will not survive restart. Migrate to DB persistence before production use.");
+}
 
 interface StoredSchema {
   id: string;

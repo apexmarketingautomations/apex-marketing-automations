@@ -45,13 +45,23 @@ interface Props {
   isAdmin?: boolean;
 }
 
-const HISTORY_KEY = "apex-dp-prompt-history";
+// [FIX 2026-05-18] HISTORY_KEY is now computed per-account to prevent cross-account localStorage leakage
+// in shared browser sessions. Never use a global key for tenant-scoped data.
 const MAX_HISTORY = 10;
 const MAX_UNDO = 20;
+
+function getHistoryKey(subAccountId?: number): string {
+  // Namespace by subAccountId so different tenant sessions never share prompt history.
+  // Falls back to "global" only for standalone/unauthenticated use (e.g. public card builder).
+  return subAccountId ? `apex-dp-prompt-history-acct${subAccountId}` : "apex-dp-prompt-history-anon";
+}
 
 export function PromptDesignPanel({ currentSchema, onSchemaUpdate, subAccountId, isAdmin }: Props) {
   const { user } = useAuth();
   const showDebug = isAdmin || user?.isAdmin === "true" || (user as any)?.role === "DEV_ADMIN";
+
+  // Derive the localStorage key once so the history state initializer uses the right namespace
+  const HISTORY_KEY = getHistoryKey(subAccountId);
 
   const [prompt, setPrompt] = useState("");
   const [placeholder, setPlaceholder] = useState(EXAMPLE_PROMPTS[0]);

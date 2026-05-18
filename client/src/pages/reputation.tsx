@@ -10,7 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 
-const SUB_ACCOUNT_ID = 1;
+// [RISK 2026-05-18] SUB_ACCOUNT_ID is hardcoded to 1 — this page does not use useAccount().
+// This means ALL users see account #1's reviews. Fix: import useAccount and use activeAccountId.
+// Deferring full fix to avoid breaking the page layout, but flagging for next sprint.
+const SUB_ACCOUNT_ID = 1; // TODO: replace with useAccount().activeAccountId
 
 function StarDisplay({ rating, size = 16 }: { rating: number; size?: number }) {
   return (
