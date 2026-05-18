@@ -18,6 +18,18 @@
 //   4  = Crash Connect — Giovanni (GIOVANNI_ACCOUNT_ID in crashIngestPipeline)
 export const CRASH_LEAD_ACCOUNT_IDS = new Set<number>([3, 4]);
 
+// ── Enrichment-allowed accounts ───────────────────────────────────────────────
+// Only accounts in this set may trigger paid external API calls:
+//   BatchData skip-trace, Nimble web scraping, Apify actors.
+// All other accounts receive leads/signals but without paid enrichment.
+//   3  = Apex Marketing Automations (platform owner — the only paying enrichment account)
+export const ENRICHMENT_ACCOUNT_IDS = new Set<number>([3]);
+
+/** Returns true only for accounts authorised to use paid enrichment APIs. */
+export function isEnrichmentAllowed(subAccountId: number): boolean {
+  return ENRICHMENT_ACCOUNT_IDS.has(subAccountId);
+}
+
 // ── BatchData ─────────────────────────────────────────────────────────────────
 // Canonical env var: BATCHDATA_API_KEY
 // Legacy alias:      BATCH_DATA   (kept for Railway envs set before the rename)

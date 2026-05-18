@@ -26,9 +26,11 @@
 
 import * as crypto from "crypto";
 import { db } from "./db";
-import { legalSignals, legalLeads, subAccounts } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { legalSignals, legalLeads, subAccounts, contacts } from "@shared/schema";
+import { eq, isNotNull, sql } from "drizzle-orm";
 import { resolveBatchDataKey, resolveCourtListenerToken } from "./vendorConfig";
+import { isBatchDataDisabled } from "./skip-trace";
+import { ENRICHMENT_ACCOUNT_IDS } from "./vendorConfig";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -172,7 +174,35 @@ async function isDuplicate(hash: string): Promise<boolean> {
 
 // ── Skip trace ────────────────────────────────────────────────────────────────
 
+async function lookupExistingPhone(firstName: string, lastName: string): Promise<string | null> {
+  const fn = firstName.trim().toLowerCase();
+  const ln = lastName.trim().toLowerCase();
+  try {
+    // Contacts table: cross-pipeline dedup — phone from any prior skip trace
+    const [contact] = await db.select({ phone: contacts.phone })
+      .from(contacts)
+      .where(sql`lower(first_name) = ${fn} AND lower(last_name) = ${ln} AND phone IS NOT NULL`)
+      .limit(1);
+    if (contact?.phone) return contact.phone;
+
+    // Same-table fallback: legalSignals already has a phone for this name
+    const fullName = `${firstName} ${lastName}`.trim();
+    const [signal] = await db.select({ subjectPhone: legalSignals.subjectPhone })
+      .from(legalSignals)
+      .where(sql`lower(subject_name) = lower(${fullName}) AND subject_phone IS NOT NULL`)
+      .limit(1);
+    return signal?.subjectPhone ?? null;
+  // allow-silent-catch: DB lookup failure falls through to fresh skip trace
+  } catch {
+    return null;
+  }
+}
+
 async function skipTraceDebtor(firstName: string, lastName: string): Promise<string | null> {
+  const existing = await lookupExistingPhone(firstName, lastName);
+  if (existing) return existing;
+
+  if (isBatchDataDisabled()) return null;
   const key = resolveBatchDataKey();
   if (!key) return null;
 
@@ -206,10 +236,10 @@ async function getAllEnabledAccountIds(): Promise<number[]> {
     const r = await pool.query(
       "SELECT sub_account_id FROM sentinel_config WHERE enabled = true LIMIT 200"
     );
-    return r.rows.map((row: { sub_account_id: number }) => row.sub_account_id);
+    const ids: number[] = r.rows.map((row: { sub_account_id: number }) => row.sub_account_id);
+    return ids.filter(id => ENRICHMENT_ACCOUNT_IDS.has(id));
   // allow-silent-catch: fallback to parent account on DB error
   } catch {
-    // Fallback to parent account
     return [parseInt(process.env.APEX_PARENT_ACCOUNT_ID || "3")];
   }
 }
