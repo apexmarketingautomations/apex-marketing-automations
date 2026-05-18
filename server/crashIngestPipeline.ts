@@ -662,14 +662,33 @@ async function runLeadRecoveryPass(defaultSubAccountId: number): Promise<number>
   }
 }
 
+/**
+ * Resolves the sub-account that owns newly-ingested crash_reports rows.
+ *
+ * HISTORICAL BUG (fixed 2026-05-18): this previously returned
+ * `getSubAccounts()[0].id` — the first row of an UNORDERED query. Postgres
+ * returns rows in arbitrary physical order, so every crash_reports row was
+ * stamped with whatever account happened to sort first. In production this
+ * silently routed 5,256 crash reports to a roofing account (niche=home_services)
+ * while the actual crash-enabled accounts (niche=accident) received zero.
+ *
+ * The crash report is a raw incident record — it must belong to a deterministic,
+ * crash-enabled account. We use the first crash-enabled account from
+ * getActiveAccountIds() (Sentinel niche=accident/crash), falling back to the
+ * canonical APEX account. We NEVER fall back to "the first account in the table".
+ */
 async function getDefaultSubAccountId(): Promise<number> {
   try {
-    const accounts = await storage.getSubAccounts();
-    if (accounts.length > 0) return accounts[0].id;
+    const crashAccounts = await getActiveAccountIds();
+    if (crashAccounts.length > 0) {
+      // Deterministic: lowest crash-enabled account id.
+      return [...crashAccounts].sort((a, b) => a - b)[0];
+    }
   } catch (err: any) {
-    console.error("[CRASH-INGEST] Could not fetch sub-accounts:", err.message);
+    console.error("[CRASH-INGEST] Could not resolve crash account:", err.message);
   }
-  return 1;
+  // Canonical fallback — APEX MARKETING Account, never an arbitrary row.
+  return APEX_MAIN_ACCOUNT_ID;
 }
 
 async function pollCycle(): Promise<void> {

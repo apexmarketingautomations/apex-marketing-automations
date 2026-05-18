@@ -1236,6 +1236,31 @@ const MIGRATIONS: DataMigration[] = [
       CREATE INDEX IF NOT EXISTS idx_dynamic_page_schemas_status ON dynamic_page_schemas (account_id, status);
     `,
   },
+  {
+    // Account-consolidation provenance columns. Additive-only, safe on live
+    // tables. Populated by the explicit consolidation migration
+    // (server/services/accountConsolidation.ts) — NOT at boot.
+    name: "2026-05-18-contact-consolidation-provenance",
+    sql: `
+      ALTER TABLE contacts
+        ADD COLUMN IF NOT EXISTS original_sub_account_id  INTEGER,
+        ADD COLUMN IF NOT EXISTS consolidated_at          TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS merged_into_contact_id   INTEGER;
+
+      CREATE INDEX IF NOT EXISTS idx_contacts_merged_into
+        ON contacts (merged_into_contact_id);
+
+      -- crash_reports / sentinel_incidents keep their pre-consolidation account
+      -- so the repoint is auditable and reversible without the snapshot table.
+      ALTER TABLE crash_reports
+        ADD COLUMN IF NOT EXISTS original_sub_account_id  INTEGER,
+        ADD COLUMN IF NOT EXISTS consolidated_at          TIMESTAMP;
+
+      ALTER TABLE sentinel_incidents
+        ADD COLUMN IF NOT EXISTS original_sub_account_id  INTEGER,
+        ADD COLUMN IF NOT EXISTS consolidated_at          TIMESTAMP;
+    `,
+  },
 ];
 
 export async function runDataMigrations(): Promise<void> {

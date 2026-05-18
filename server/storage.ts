@@ -515,7 +515,10 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   async getSubAccounts() {
-    return db.select().from(subAccounts);
+    // ORDER BY id — without it Postgres returns rows in arbitrary physical
+    // order. Callers that took accounts[0] (e.g. crash ingest) were silently
+    // non-deterministic. See crashIngestPipeline.getDefaultSubAccountId.
+    return db.select().from(subAccounts).orderBy(subAccounts.id);
   }
 
   async getSubAccount(id: number) {

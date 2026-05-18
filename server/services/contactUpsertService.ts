@@ -113,6 +113,19 @@ export interface ContactUpsertInput {
   // Quality score (0–1)
   contactQualityScore?: number | null;
 
+  // ── Contact lifecycle + dedup keys ──────────────────────────────────────────
+  // NOTE: prior to 2026-05-18 these four fields were accepted by callers but
+  // silently dropped here (not in baseValues) — `// @ts-nocheck` masked it.
+  // That is why incident_fingerprint was NULL on every row in production.
+  /** SHA256 cross-incident dedup fingerprint — links a contact to its source incident. */
+  incidentFingerprint?: string | null;
+  /** True until a verified identity is recovered. Drives default-view visibility. */
+  isPlaceholder?: boolean | null;
+  /** CRM view bucket: incident_subject | opportunity_lead | enriched_contact | placeholder | archived */
+  viewClass?: string | null;
+  /** Operational workflow stage: new | enriching | scored | routed | contacted | converted | closed */
+  workflowStage?: string | null;
+
   // Routing fields (2026-05-15)
   sourcePipeline?: string | null;
   leadType?: string | null;
@@ -383,6 +396,11 @@ export async function upsertContact(input: ContactUpsertInput): Promise<ContactU
     phoneConfidence: input.phoneConfidence ?? (input.phone ? PHONE_CONFIDENCE.UNKNOWN : null),
     phoneAcquiredAt: input.phone ? (input.phoneAcquiredAt ?? new Date()) : null,
     contactQualityScore: input.contactQualityScore ?? null,
+    // ── Lifecycle + dedup keys (previously dropped — see ContactUpsertInput) ──
+    incidentFingerprint: input.incidentFingerprint ?? null,
+    isPlaceholder: input.isPlaceholder ?? (identityStatus !== "verified"),
+    viewClass: input.viewClass ?? (identityStatus === "verified" ? "enriched_contact" : "placeholder"),
+    workflowStage: input.workflowStage ?? "new",
     sourcePipeline: input.sourcePipeline ?? null,
     leadType: input.leadType ?? null,
     routeRuleId: input.routeRuleId ?? null,
@@ -534,6 +552,11 @@ async function mergeContact(
     patch.sourceExternalId = input.sourceExternalId;
   }
 
+  // Incident fingerprint: fill if missing (first write wins — stable dedup key)
+  if (input.incidentFingerprint && !(existing as any).incidentFingerprint) {
+    (patch as any).incidentFingerprint = input.incidentFingerprint;
+  }
+
   // Lead classification: fill if missing
   if (input.leadVertical && !existing.leadVertical) patch.leadVertical = input.leadVertical;
   if (input.leadSubtype && !existing.leadSubtype) patch.leadSubtype = input.leadSubtype;
@@ -651,6 +674,17 @@ async function mergeContact(
 
   if (finalIdentityStatus !== existing.identityStatus) {
     patch.identityStatus = finalIdentityStatus;
+  }
+
+  // Lifecycle flags follow identity: once verified, the contact is no longer a
+  // placeholder and graduates out of the placeholder view bucket. Never demote
+  // a verified contact back to placeholder.
+  if (finalIdentityStatus === "verified") {
+    if ((existing as any).isPlaceholder === true) (patch as any).isPlaceholder = false;
+    if ((existing as any).viewClass === "placeholder") (patch as any).viewClass = "enriched_contact";
+  }
+  if (input.workflowStage && (existing as any).workflowStage === "new" && input.workflowStage !== "new") {
+    (patch as any).workflowStage = input.workflowStage;
   }
 
   // Quality score: take the higher of the two

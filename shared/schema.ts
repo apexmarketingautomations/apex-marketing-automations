@@ -789,6 +789,20 @@ export const contacts = pgTable("contacts", {
    * Examples: 'flhsmv' | 'dhsmv' | 'batchdata' | 'google_geocode' | 'manual' | 'fhp_cad'
    */
   addressSource: text("address_source"),
+
+  // ── Account consolidation provenance (2026-05-18) ─────────────────────────
+  // Set by the account-consolidation migration. Preserve the pre-consolidation
+  // origin so the operation is fully auditable and reversible.
+  /** sub_account_id this contact belonged to BEFORE consolidation into the primary account. */
+  originalSubAccountId: integer("original_sub_account_id"),
+  /** When this contact was moved/merged by the consolidation migration. */
+  consolidatedAt: timestamp("consolidated_at"),
+  /**
+   * If this row was a duplicate merged into another contact, the winning
+   * contact's id. The row is kept (view_class='archived') for reversibility,
+   * never deleted.
+   */
+  mergedIntoContactId: integer("merged_into_contact_id"),
 }, (table) => [
   index("idx_contacts_sub_skip_status").on(table.subAccountId, table.skipTraceStatus),
   index("idx_contacts_sub_identity_status").on(table.subAccountId, table.identityStatus),
@@ -800,6 +814,7 @@ export const contacts = pgTable("contacts", {
   index("idx_contacts_is_placeholder").on(table.subAccountId, table.isPlaceholder),
   index("idx_contacts_incident_fingerprint").on(table.incidentFingerprint),
   index("idx_contacts_territory").on(table.territoryId),
+  index("idx_contacts_merged_into").on(table.mergedIntoContactId),
 ]);
 
 export const insertContactSchema = createInsertSchema(contacts).omit({ id: true, createdAt: true });
