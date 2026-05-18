@@ -2,10 +2,14 @@
  * client/src/components/dynamic-pages/DynamicPageRenderer.tsx
  *
  * Renders a full page from a DynamicPageSchema.
- * Used in the builder preview and for published page hydration.
+ * Hybrid architecture:
+ *   - WebGL 3D hero (Three.js + React Three Fiber) — always rendered
+ *   - Below-hero sections: AI-generated Tailwind HTML in a sandboxed iframe
+ *     when schema.generatedHtml is present, otherwise falls back to the
+ *     fixed schema-driven section components.
  */
 
-import { Suspense } from "react";
+import { Suspense, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { WebGLSceneRenderer } from "./WebGLSceneRenderer";
 import type { DynamicPageSchema, SectionSchema, CTAConfig, CTAAnimation } from "@/lib/dynamic-pages/schema";
@@ -179,6 +183,65 @@ function Section({ section, schema }: { section: SectionSchema; schema: DynamicP
   }
 }
 
+// ── AI HTML iframe renderer ───────────────────────────────────────────────────
+
+function buildIframeDoc(html: string, colors: DynamicPageSchema["theme"]["colors"]): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+:root {
+  --primary: ${colors.primary};
+  --secondary: ${colors.secondary};
+  --accent: ${colors.accent};
+  --bg: ${colors.background};
+  --surface: ${colors.surface};
+  --text: ${colors.text};
+  --text-muted: ${colors.textMuted};
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: Inter, system-ui, sans-serif; }
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap');
+</style>
+</head>
+<body>
+${html}
+</body>
+</html>`;
+}
+
+function HtmlSectionsIframe({ schema }: { schema: DynamicPageSchema }) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const handleLoad = useCallback(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+    // Auto-resize to content height
+    try {
+      const height = iframe.contentDocument?.documentElement?.scrollHeight ?? 0;
+      if (height > 0) iframe.style.height = `${height}px`;
+    } catch {
+      // cross-origin sandbox — leave at minHeight
+    }
+  }, []);
+
+  const doc = buildIframeDoc(schema.generatedHtml!, schema.theme.colors);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      srcDoc={doc}
+      onLoad={handleLoad}
+      title="Generated page sections"
+      sandbox="allow-scripts allow-forms allow-same-origin"
+      style={{ width: "100%", border: "none", minHeight: "600px", display: "block" }}
+    />
+  );
+}
+
 // ── Public export ─────────────────────────────────────────────────────────────
 
 interface Props {
@@ -189,10 +252,11 @@ interface Props {
 
 export function DynamicPageRenderer({ schema, isPreview = false, heroHeight = "500px" }: Props) {
   const sorted = [...(schema.sections ?? [])].sort((a, b) => a.order - b.order);
+  const hasGeneratedHtml = !!schema.generatedHtml?.trim();
 
   return (
     <div style={{ backgroundColor: schema.theme.colors.background, color: schema.theme.colors.text, fontFamily: schema.theme.font ?? "Inter" }}>
-      {/* WebGL Hero */}
+      {/* ── WebGL 3D Hero (always rendered) ── */}
       <div style={{ position: "relative", height: heroHeight }}>
         <Suspense fallback={<div style={{ height: heroHeight, background: schema.theme.colors.surface }} />}>
           <WebGLSceneRenderer scene={schema.scene} height={heroHeight} />
@@ -212,35 +276,41 @@ export function DynamicPageRenderer({ schema, isPreview = false, heroHeight = "5
         </div>
       </div>
 
-      {/* Sections */}
-      <div>
-        {sorted.filter(s => s.type !== "hero").map(section => (
-          <Section key={section.id} section={section} schema={schema} />
-        ))}
-      </div>
-
-      {/* Contact form */}
-      {schema.forms.length > 0 && (
-        <section className="py-16 px-6 max-w-md mx-auto">
-          <h2 className="text-2xl font-black mb-8 text-center" style={{ color: schema.theme.colors.text }}>
-            {schema.forms[0].title}
-          </h2>
-          <form className="space-y-4" onSubmit={e => e.preventDefault()}>
-            {schema.forms[0].fields.map(field => (
-              <div key={field.name}>
-                <label className="block text-sm font-medium mb-1" style={{ color: schema.theme.colors.textMuted }}>{field.label}</label>
-                {field.type === "textarea" ? (
-                  <textarea className="w-full p-3 rounded-xl border bg-transparent" style={{ borderColor: schema.theme.colors.primary + "40", color: schema.theme.colors.text }} rows={4} />
-                ) : (
-                  <input type={field.type} className="w-full p-3 rounded-xl border bg-transparent" style={{ borderColor: schema.theme.colors.primary + "40", color: schema.theme.colors.text }} />
-                )}
-              </div>
+      {/* ── Below-hero sections ── */}
+      {hasGeneratedHtml ? (
+        /* AI-generated Tailwind HTML — renders what the user actually described */
+        <HtmlSectionsIframe schema={schema} />
+      ) : (
+        /* Fallback: schema-driven fixed section components */
+        <>
+          <div>
+            {sorted.filter(s => s.type !== "hero").map(section => (
+              <Section key={section.id} section={section} schema={schema} />
             ))}
-            <Button className="w-full py-3 rounded-xl font-bold" style={{ background: `linear-gradient(135deg, ${schema.theme.colors.primary}, ${schema.theme.colors.secondary})` }}>
-              {schema.forms[0].submitText}
-            </Button>
-          </form>
-        </section>
+          </div>
+          {schema.forms.length > 0 && (
+            <section className="py-16 px-6 max-w-md mx-auto">
+              <h2 className="text-2xl font-black mb-8 text-center" style={{ color: schema.theme.colors.text }}>
+                {schema.forms[0].title}
+              </h2>
+              <form className="space-y-4" onSubmit={e => e.preventDefault()}>
+                {schema.forms[0].fields.map(field => (
+                  <div key={field.name}>
+                    <label className="block text-sm font-medium mb-1" style={{ color: schema.theme.colors.textMuted }}>{field.label}</label>
+                    {field.type === "textarea" ? (
+                      <textarea className="w-full p-3 rounded-xl border bg-transparent" style={{ borderColor: schema.theme.colors.primary + "40", color: schema.theme.colors.text }} rows={4} />
+                    ) : (
+                      <input type={field.type} className="w-full p-3 rounded-xl border bg-transparent" style={{ borderColor: schema.theme.colors.primary + "40", color: schema.theme.colors.text }} />
+                    )}
+                  </div>
+                ))}
+                <Button className="w-full py-3 rounded-xl font-bold" style={{ background: `linear-gradient(135deg, ${schema.theme.colors.primary}, ${schema.theme.colors.secondary})` }}>
+                  {schema.forms[0].submitText}
+                </Button>
+              </form>
+            </section>
+          )}
+        </>
       )}
     </div>
   );

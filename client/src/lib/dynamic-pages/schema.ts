@@ -212,6 +212,13 @@ export interface PageCopy {
 export interface DynamicPageSchema {
   version: "1.0";
   id: string;
+  /**
+   * AI-generated Tailwind HTML for the below-hero sections.
+   * When present, DynamicPageRenderer renders this inside a sandboxed iframe
+   * instead of the fixed schema-driven section components.
+   * The WebGL 3D hero always renders above it unchanged.
+   */
+  generatedHtml?: string;
   meta: {
     title: string;
     slug: string;

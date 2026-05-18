@@ -137,6 +137,92 @@ function buildDefaultSections(intent: ReturnType<typeof parsePromptIntent>): Sec
   ];
 }
 
+// ── HTML sections system prompt ───────────────────────────────────────────────
+
+const HTML_SECTIONS_SYSTEM_PROMPT = `You are an expert marketing landing page designer specializing in high-conversion dark-themed pages.
+
+Generate complete HTML sections for a marketing landing page using Tailwind CSS.
+
+RULES:
+1. Return ONLY raw HTML — NO <html>, <head>, <body>, <script>, or <style> wrapper tags.
+2. Use Tailwind CSS utility classes for ALL styling (the page loads Tailwind CDN).
+3. CSS custom properties are available for theme colors:
+   var(--primary), var(--secondary), var(--accent), var(--bg), var(--surface), var(--text), var(--text-muted)
+4. The page already has a dramatic WebGL 3D hero above with the main headline — do NOT add another hero section.
+5. Generate these sections in this order:
+   a) Features/Services grid (3–6 cards)
+   b) Stats bar (3–4 impressive niche-specific numbers)
+   c) Testimonials (2–3 realistic client quotes)
+   d) CTA banner with gradient background
+   e) Contact form with niche-appropriate fields
+6. Make ALL copy 100% specific to the niche — no generic placeholder text.
+7. Stats must be realistic and impressive (law firm → "$2.4M avg. settlement", "93% case win rate").
+8. Testimonials: use realistic client first names + last initial and specific results.
+9. Contact form: fields must be appropriate for the niche (injury law → accident date, injury type; pet grooming → pet name, breed, services needed).
+10. Use modern dark UI: glassmorphism cards (bg-white/5 backdrop-blur), gradient borders, glow effects.
+11. Use inline style="..." with var(--primary) for dynamic theme color accents.
+12. All hover effects via Tailwind hover: prefix.
+13. Use semantic HTML5: <section>, <h2>, <h3>, <p>, <ul>, <form>.
+14. Do NOT add a navigation bar or footer — those are handled by the platform.`;
+
+// ── Sanitize AI-generated HTML ────────────────────────────────────────────────
+
+function sanitizeHtml(html: string): string {
+  // Strip any <script> tags (AI shouldn't generate them but be safe)
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "")
+    .replace(/on\w+\s*=/gi, "data-blocked="); // strip inline event handlers
+}
+
+// ── Generate below-hero HTML sections ────────────────────────────────────────
+
+async function generateSectionsHtml(
+  prompt: string,
+  schema: DynamicPageSchema,
+  intent: ReturnType<typeof parsePromptIntent>
+): Promise<string> {
+  const colors = schema.theme?.colors ?? {};
+  const userMessage = `Generate HTML sections for this landing page prompt: "${prompt}"
+
+Business context:
+- Niche: ${intent.niche}
+- Business type: ${intent.businessType}
+- Style: ${intent.style}
+- Headline (already shown in the 3D hero): "${schema.copy?.headline ?? ""}"
+- Subheadline: "${schema.copy?.subheadline ?? ""}"
+- Primary CTA: "${schema.cta?.primaryText ?? "Get Started"}"
+- Theme colors: primary=${colors.primary ?? "#6366f1"}, secondary=${colors.secondary ?? "#a855f7"}, accent=${colors.accent ?? "#06b6d4"}
+
+Generate compelling, niche-specific sections. The WebGL 3D hero is already above — start directly with features/services.`;
+
+  try {
+    const response = await aiChat(
+      [
+        { role: "system", content: HTML_SECTIONS_SYSTEM_PROMPT },
+        { role: "user", content: userMessage },
+      ],
+      { temperature: 0.85, maxTokens: 4096, timeoutMs: 30000 }
+    );
+
+    if (!response.ok || !response.text) {
+      console.warn("[AI-PAGE-HTML] HTML generation failed, sections will use fallback renderer");
+      return "";
+    }
+
+    // Strip any accidental markdown code fences
+    const clean = response.text
+      .replace(/^```html?\n?/i, "")
+      .replace(/```$/m, "")
+      .trim();
+
+    return sanitizeHtml(clean);
+  } catch (err) {
+    console.warn("[AI-PAGE-HTML] generateSectionsHtml error:", err instanceof Error ? err.message : err);
+    return "";
+  }
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export async function generatePageSchema(prompt: string, subAccountId?: number): Promise<DynamicPageSchema> {
@@ -158,21 +244,29 @@ Context from parser:
 Generate a compelling, on-brand page schema. Make the copy specific and persuasive. Make the scene visually striking. Return ONLY the JSON.`;
 
   try {
-    const response = await aiChat(
-      [
-        { role: "system", content: SCHEMA_SYSTEM_PROMPT },
-        { role: "user", content: userMessage },
-      ],
-      { temperature: 0.8, maxTokens: 4096, jsonMode: true, timeoutMs: 30000 }
-    );
+    // Run schema generation and HTML section generation in parallel
+    const [schemaResponse, htmlSections] = await Promise.allSettled([
+      aiChat(
+        [
+          { role: "system", content: SCHEMA_SYSTEM_PROMPT },
+          { role: "user", content: userMessage },
+        ],
+        { temperature: 0.8, maxTokens: 4096, jsonMode: true, timeoutMs: 30000 }
+      ),
+      // HTML sections need the schema for copy context — use intent-based placeholder first,
+      // then we'll re-call with the real schema after. For now generate from intent.
+      Promise.resolve(null as null),
+    ]);
 
-    if (!response.ok || !response.text) {
-      console.warn("[AI-PAGE-SCHEMA] AI call failed, using fallback schema");
-      return buildFallbackSchema(prompt, intent);
+    let parsed: DynamicPageSchema;
+
+    if (schemaResponse.status === "fulfilled" && schemaResponse.value.ok && schemaResponse.value.text) {
+      const raw = extractJSON(schemaResponse.value.text);
+      parsed = JSON.parse(raw) as DynamicPageSchema;
+    } else {
+      console.warn("[AI-PAGE-SCHEMA] Schema AI call failed, using fallback");
+      parsed = buildFallbackSchema(prompt, intent);
     }
-
-    const raw = extractJSON(response.text);
-    const parsed = JSON.parse(raw) as DynamicPageSchema;
 
     // Ensure required fields
     parsed.version = "1.0";
@@ -183,6 +277,12 @@ Generate a compelling, on-brand page schema. Make the copy specific and persuasi
     parsed.meta.updatedAt = now;
     if (subAccountId) parsed.meta.subAccountId = subAccountId;
     if (parsed.publish) parsed.publish.published = false;
+
+    // Now generate the AI HTML sections using the real schema copy + theme
+    const generatedHtml = await generateSectionsHtml(prompt, parsed, intent);
+    if (generatedHtml) {
+      parsed.generatedHtml = generatedHtml;
+    }
 
     return parsed;
   } catch (err) {
@@ -220,6 +320,11 @@ Return the COMPLETE updated schema as JSON.`;
     const raw = extractJSON(response.text);
     const patched = JSON.parse(raw) as DynamicPageSchema;
     patched.meta = { ...existingSchema.meta, ...patched.meta, updatedAt: now };
+
+    // Regenerate HTML sections with the patched schema
+    const updatedHtml = await generateSectionsHtml(prompt, patched, intent);
+    if (updatedHtml) patched.generatedHtml = updatedHtml;
+
     return patched;
   } catch (err) {
     console.warn("[AI-PAGE-SCHEMA] patchExistingPageSchema failed, returning existing schema:", err instanceof Error ? err.message : err);
