@@ -68,15 +68,16 @@ import { enterpriseTenantQuotas } from "@shared/schema";
  * Safely extract a single string from Express query parameters.
  * Express query can be string | string[] | undefined; this normalizes to string | undefined.
  */
-function getStringParam(value: string | string[] | undefined): string | undefined {
-  if (Array.isArray(value)) return value[0];
-  return value;
+function getStringParam(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return typeof value[0] === "string" ? value[0] : undefined;
+  return undefined;
 }
 
 /**
  * Safely extract a numeric parameter from Express query/params.
  */
-function getNumParam(value: string | string[] | undefined): number | null {
+function getNumParam(value: unknown): number | null {
   const str = getStringParam(value);
   if (!str) return null;
   const num = parseInt(str, 10);
@@ -310,7 +311,7 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
     try {
       await assignRole({
         userId: userId as string,
-        roleName: roleName as string,
+        roleName: roleName as any,
         scopeNodeId: scopeNodeId as number | undefined,
         subAccountId: subAccountId as number | undefined,
         grantedBy: (req as any).user?.id || "admin",
