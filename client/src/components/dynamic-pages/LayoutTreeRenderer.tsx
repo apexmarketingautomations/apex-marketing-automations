@@ -15,6 +15,7 @@
  */
 
 import { Suspense, useMemo } from "react";
+import type { ReactElement, ElementType } from "react";
 import { motion } from "framer-motion";
 import * as Icons from "lucide-react";
 import { WebGLSceneRenderer } from "./WebGLSceneRenderer";
@@ -200,7 +201,7 @@ function NodeChildren({ node, ctx }: { node: LayoutNode; ctx: RenderCtx }) {
   return <>{(node.children ?? []).map(child => <LayoutNodeView key={child.id} node={child} ctx={ctx} />)}</>;
 }
 
-function LayoutNodeView({ node, ctx }: { node: LayoutNode; ctx: RenderCtx }): JSX.Element | null {
+function LayoutNodeView({ node, ctx }: { node: LayoutNode; ctx: RenderCtx }): ReactElement | null {
   const { ds, schema } = ctx;
   const css = resolveStyle(ds, node.style);
   const anim = node.style?.animation;
@@ -254,7 +255,7 @@ function LayoutNodeView({ node, ctx }: { node: LayoutNode; ctx: RenderCtx }): JS
     // ── text / heading ──────────────────────────────────────────────────────
     case "heading": {
       const level = node.content?.headingLevel ?? 2;
-      const Tag = (`h${level}` as keyof JSX.IntrinsicElements);
+      const Tag = `h${level}` as ElementType;
       const tCss = typographyCss(ds, node.content?.typographyRole ?? "h2", true);
       const colorKey = node.content?.colorToken;
       const gradient = node.content?.gradientText;
