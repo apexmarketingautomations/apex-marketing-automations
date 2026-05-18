@@ -6,6 +6,9 @@
  * Both frontend renderer and backend AI generation import from here (via shared path).
  */
 
+import type { ComposedLayout } from "./layoutTree";
+export type { ComposedLayout } from "./layoutTree";
+
 export type ThemeStyle =
   | "glassmorphism"
   | "neon"
@@ -260,6 +263,13 @@ export interface DynamicPageSchema {
    * The WebGL 3D hero always renders above it unchanged.
    */
   generatedHtml?: string;
+  /**
+   * Freeform AI-composed layout tree (Stitch-style engine).
+   * When present, the page renders via LayoutTreeRenderer instead of the
+   * legacy block sections — this is the new default for "stitch-style" mode.
+   * The `sections` array below is kept for "apex-fast" (legacy) mode.
+   */
+  layout?: ComposedLayout;
   /** How this schema was generated — drives debug panel display and future tooling. */
   designSource?: DesignSource;
   /** The generation mode used to produce this schema. */

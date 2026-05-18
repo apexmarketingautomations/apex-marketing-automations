@@ -19,6 +19,8 @@ import { aiChat, aiGenerateImage } from "../aiGateway";
 import { parsePromptIntent } from "./visualPromptParser";
 import { generateVisualDesignSpec } from "./visualDesignGenerator";
 import { validateGeneratedSchema } from "./qualityValidator";
+import { composeLayout, applyHeroImage } from "./layoutCompositionEngine";
+import { validateComposition, registerComposition } from "./compositionValidator";
 import type { DynamicPageSchema, WebGLSceneSchema, SceneObject, SectionSchema } from "../../client/src/lib/dynamic-pages/schema";
 import type { ParsedPromptIntent, SemanticObjectHint } from "./visualPromptParser";
 import type { VisualDesignSpec, SceneObjectSpec, SectionSpec } from "./visualDesignGenerator";
@@ -471,7 +473,10 @@ function buildHeroImagePrompt(prompt: string, intent: ParsedPromptIntent): strin
   return `Professional ${intent.businessLabel} marketing image. ${prompt.trim().slice(0, 300)}. ${styleDesc}. Photorealistic, 8K, no text or logos, centered composition for a website hero.`;
 }
 
-// ── Stitch-style generation ───────────────────────────────────────────────────
+// ── Stitch-style generation (freeform layout engine) ──────────────────────────
+// The new default. Composes a freeform LayoutNode tree instead of block
+// sections. The schema still carries scene/forms/crm/theme/meta — only the
+// rendering architecture changes.
 
 async function generateStitchStyleSchema(
   prompt: string,
@@ -479,38 +484,54 @@ async function generateStitchStyleSchema(
   subAccountId?: number,
   uploadedImageUrl?: string,
 ): Promise<DynamicPageSchema> {
-  // Phase 1: design spec (in parallel with hero image generation)
-  const [specResult, heroImageResult] = await Promise.allSettled([
+  // Phase 1: design spec, hero image, and freeform layout — all in parallel
+  const [specResult, heroImageResult, layoutResult] = await Promise.allSettled([
     generateVisualDesignSpec(prompt, intent),
     aiGenerateImage(buildHeroImagePrompt(prompt, intent)),
+    composeLayout(prompt, intent),
   ]);
 
   const spec = specResult.status === "fulfilled" ? specResult.value : null;
-  const heroImageUrl = heroImageResult.status === "fulfilled" && heroImageResult.value ? heroImageResult.value : undefined;
+  const heroImageUrl = heroImageResult.status === "fulfilled" && heroImageResult.value
+    ? heroImageResult.value
+    : uploadedImageUrl;
 
-  if (!spec) {
-    console.warn("[STITCH] Design spec generation failed, falling back to Apex Fast");
-    return generateApexFastSchema(prompt, intent, subAccountId, uploadedImageUrl);
-  }
+  // Phase 2: schema skeleton (scene, theme, copy, forms, crm) from spec or fallback
+  let schema = spec ? mapSpecToSchema(spec, prompt, subAccountId) : buildFallbackSchema(prompt, intent);
+  if (subAccountId) schema.meta.subAccountId = subAccountId;
+  if (heroImageUrl) schema.scene.fallbackImage = heroImageUrl;
 
-  // Phase 2: map spec to schema
-  let schema = mapSpecToSchema(spec, prompt, subAccountId);
-
-  // Embed hero image
-  if (heroImageUrl) {
-    schema.scene.fallbackImage = heroImageUrl;
-  }
-
-  // Phase 3: quality validation + auto-fix
+  // Phase 3: scene/copy quality validation + auto-fix
   const validation = validateGeneratedSchema(schema, prompt, intent);
   if (!validation.passed && validation.fixedSchema) {
-    console.log(`[STITCH] Auto-fixed ${validation.issues.filter(i => i.severity === "error").length} errors`);
+    console.log(`[STITCH] Auto-fixed ${validation.issues.filter(i => i.severity === "error").length} schema errors`);
     schema = validation.fixedSchema;
   }
 
-  // Phase 4: HTML sections
-  const generatedHtml = await generateSectionsHtml(prompt, schema, intent, heroImageUrl, uploadedImageUrl);
-  if (generatedHtml) schema.generatedHtml = generatedHtml;
+  // Phase 4: attach the freeform layout tree
+  let layout = layoutResult.status === "fulfilled" ? layoutResult.value : null;
+  if (!layout) {
+    console.warn("[STITCH] Layout composition failed — using deterministic composer");
+    layout = await composeLayout(prompt, intent, { deterministicOnly: true });
+  }
+  if (heroImageUrl) applyHeroImage(layout, heroImageUrl);
+
+  // Phase 5: composition validation — reject generic / identical / low-variance layouts
+  let report = validateComposition(layout, intent);
+  if (!report.passed) {
+    console.warn(`[STITCH] Composition rejected (${report.issues.filter(i => i.severity === "error").map(i => i.code).join(", ")}) — recomposing`);
+    layout = await composeLayout(prompt, intent, { deterministicOnly: true });
+    if (heroImageUrl) applyHeroImage(layout, heroImageUrl);
+    report = validateComposition(layout, intent, { allowDuplicateSignature: true });
+  }
+  registerComposition(layout.compositionSignature);
+  console.log(`[STITCH] Composition ${report.passed ? "passed" : "shipped with warnings"} score=${report.score} archetype=${layout.archetype}`);
+
+  schema.layout = layout;
+  schema.generationMode = "stitch-style";
+  schema.designSource = "apex-generator";
+  // The layout tree replaces HTML sections — clear any legacy generatedHtml.
+  schema.generatedHtml = undefined;
 
   return schema;
 }
