@@ -14,7 +14,7 @@ import {
   stopHomeServicePipeline,
   getHomeServicePipelineStats,
 } from "../homeServiceSignalPipeline";
-import { asyncHandler, parseIntParam, verifyAccountOwnership, isUserAdmin } from "./helpers";
+import { asyncHandler, parseIntParam, verifyAccountOwnership, isUserAdmin, requireAdmin } from "./helpers";
 
 export function registerHomeServiceRoutes(app: Express): void {
   // GET /api/home-service/leads/:subAccountId
@@ -30,10 +30,8 @@ export function registerHomeServiceRoutes(app: Express): void {
         .where(and(eq(homeServiceContractors.subAccountId, subAccountId), eq(homeServiceContractors.active, true)));
 
       if (counties.length === 0) {
-        const allLeads = await db.select().from(homeServiceLeads)
-          .orderBy(desc(homeServiceLeads.createdAt))
-          .limit(100);
-        return res.json({ leads: allLeads, scope: "all", contractorCount: 0 });
+        // No contractor profile configured — return empty set rather than leaking all platform leads
+        return res.json({ leads: [], scope: "no_contractor_configured", contractorCount: 0 });
       }
 
       const countySet = new Set<string>();
@@ -52,7 +50,7 @@ export function registerHomeServiceRoutes(app: Express): void {
   }));
 
   // GET /api/home-service/stats
-  app.get("/api/home-service/stats", async (_req: Request, res: Response) => {
+  app.get("/api/home-service/stats", requireAdmin, async (_req: Request, res: Response) => {
     try {
       const [{ totalLeads }] = await db
         .select({ totalLeads: sql<number>`count(*)::int` })

@@ -6,6 +6,7 @@ import admin from "firebase-admin";
 import { db } from "../../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { isAdminFlag } from "../../auth/authorization";
 
 let firebaseInitialized = false;
 function initFirebaseAdmin() {
@@ -41,7 +42,7 @@ export function registerAuthRoutes(app: Express): void {
       const { passwordHash, ...safeUser } = user as any;
 
       // Admin if env-var ID matches OR the DB isAdmin flag was explicitly set
-      const isDevAdmin = (adminUserId && userId === adminUserId) || safeUser.isAdmin === "true";
+      const isDevAdmin = (adminUserId && userId === adminUserId) || isAdminFlag(safeUser.isAdmin);
 
       res.json({
         ...safeUser,
@@ -290,7 +291,7 @@ export function registerAuthRoutes(app: Express): void {
       }
 
       const adminUserId = process.env.ADMIN_USER_ID;
-      const isDevAdmin = (adminUserId && user.id === adminUserId) || user.isAdmin === "true";
+      const isDevAdmin = (adminUserId && user.id === adminUserId) || isAdminFlag(user.isAdmin);
       const sessionUser = { id: user.id, claims: { sub: user.id }, authProvider: "email" };
 
       (req.session as any).passport = { user: sessionUser };
@@ -379,7 +380,7 @@ export function registerAuthRoutes(app: Express): void {
           }
 
           const adminUserId = process.env.ADMIN_USER_ID;
-          const isDevAdmin = (adminUserId && user!.id === adminUserId) || user!.isAdmin === "true";
+          const isDevAdmin = (adminUserId && user!.id === adminUserId) || isAdminFlag(user!.isAdmin);
 
           res.json({
             success: true,

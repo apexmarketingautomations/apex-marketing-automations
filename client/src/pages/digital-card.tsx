@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import { useParams } from "wouter";
+import { CinematicCardHero } from "@/components/card-identity/CinematicCardHero";
 import {
   CardLoading, CardNotFound, CardUnavailable, CardError,
   HeroSection, PrimaryActions, SaveShareBar, QRPanel,
@@ -431,7 +432,16 @@ export default function DigitalCard() {
       <BackgroundGlow card={card} theme={theme} />
 
       <div className="relative z-10">
-        <HeroSection card={card} theme={theme} />
+        {(card as any).identityDna ? (
+          <Suspense fallback={<HeroSection card={card} theme={theme} />}>
+            <CinematicCardHero
+              dna={(card as any).identityDna}
+              photoUrl={card.photoUrl}
+            />
+          </Suspense>
+        ) : (
+          <HeroSection card={card} theme={theme} />
+        )}
 
         <div
           className={`px-5 max-w-[480px] mx-auto -mt-2 ${adaptation.compactMode ? "pb-32" : "pb-40"}`}

@@ -283,11 +283,15 @@ export default function LaunchReadiness() {
                     <Badge variant="outline" className="text-xs shrink-0">{log.action}</Badge>
                     <div className="min-w-0 flex-1">
                       <div className="text-xs text-muted-foreground">by {log.performedBy}</div>
-                      {log.details && (
-                        <pre className="text-xs mt-1 bg-muted p-1 rounded overflow-hidden text-ellipsis">
-                          {JSON.stringify(log.details, null, 1).substring(0, 200)}
-                        </pre>
-                      )}
+                      {log.details && (() => {
+                        const d = log.details;
+                        const summary = typeof d === "string"
+                          ? d
+                          : (d.message || d.action || d.description || d.event || d.result || null);
+                        return summary ? (
+                          <p className="text-xs mt-1 text-muted-foreground truncate">{String(summary).slice(0, 200)}</p>
+                        ) : null;
+                      })()}
                       <div className="text-xs text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</div>
                     </div>
                   </div>

@@ -33,12 +33,22 @@ export function registerTimelineRoutes(app: Express) {
     const events = await storage.getTimelineEventsByTrace(traceId);
     if (events.length === 0) return res.status(404).json({ error: "Trace not found" });
 
+    // Verify the requesting user owns this trace's account
+    const traceSubAccountId = events[0]?.subAccountId;
+    if (traceSubAccountId != null && !(await verifyAccountOwnership(req, res, traceSubAccountId))) return;
+
     res.json(events);
   }));
 
   app.get("/api/timeline/trace/:traceId/summary", asyncHandler(async (req, res) => {
     const traceId = req.params.traceId;
     if (!traceId) return res.status(400).json({ error: "traceId required" });
+
+    // Ownership check: verify the trace belongs to the user before returning summary
+    const events = await storage.getTimelineEventsByTrace(traceId);
+    if (events.length === 0) return res.status(404).json({ error: "Trace not found" });
+    const traceSubAccountId = events[0]?.subAccountId;
+    if (traceSubAccountId != null && !(await verifyAccountOwnership(req, res, traceSubAccountId))) return;
 
     const summary = await storage.getTraceSummary(traceId);
     if (!summary) return res.status(404).json({ error: "Trace not found" });

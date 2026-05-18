@@ -395,7 +395,7 @@ export function CasesTab({ onBack }: { onBack: () => void }) {
         <div className="text-center py-20">
           <div className="text-4xl mb-3">⚠️</div>
           <div className="text-red-400 font-bold">Failed to load cases</div>
-          <div className="text-slate-500 text-sm mt-1">{String(error)}</div>
+          <div className="text-slate-500 text-sm mt-1">Unable to connect to the intelligence engine. Please try again shortly.</div>
         </div>
       ) : cases.length === 0 ? (
         <div className="text-center py-20">

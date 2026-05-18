@@ -206,14 +206,21 @@ export function registerDomainRoutes(app: Express) {
   // Update domain (attach to site, etc)
   app.patch("/api/domains/:id", asyncHandler(async (req, res) => {
     const domainId = parseIntParam(req.params.id, "id");
-    const updates = req.body;
-    const domain = await storage.updateDomain(domainId, updates);
+    if (domainId === null) return res.status(400).json({ error: "invalid id" });
+    const existing = await storage.getDomain(domainId);
+    if (!existing) return res.status(404).json({ error: "Domain not found" });
+    if (!(await verifyAccountOwnership(req, res, existing.subAccountId))) return;
+    const domain = await storage.updateDomain(domainId, req.body);
     res.json(domain);
   }));
 
   // Delete domain
   app.delete("/api/domains/:id", asyncHandler(async (req, res) => {
     const domainId = parseIntParam(req.params.id, "id");
+    if (domainId === null) return res.status(400).json({ error: "invalid id" });
+    const existing = await storage.getDomain(domainId);
+    if (!existing) return res.status(404).json({ error: "Domain not found" });
+    if (!(await verifyAccountOwnership(req, res, existing.subAccountId))) return;
     await storage.deleteDomain(domainId);
     res.json({ success: true });
   }));

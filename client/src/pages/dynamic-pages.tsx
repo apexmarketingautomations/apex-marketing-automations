@@ -1,5 +1,5 @@
-import { Suspense, useRef, useState, useMemo } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Suspense, useRef, useState, useMemo, useCallback } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
 import {
   OrbitControls,
   Float,
@@ -16,18 +16,24 @@ import { motion, AnimatePresence } from "framer-motion";
 import * as THREE from "three";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+import { PromptDesignPanel } from "@/components/dynamic-pages/PromptDesignPanel";
+import { DynamicPageRenderer } from "@/components/dynamic-pages/DynamicPageRenderer";
+import type { DynamicPageSchema } from "@/lib/dynamic-pages/schema";
+import { useAuth } from "@/hooks/use-auth";
+import { useActiveSubAccountId } from "@/components/account-required";
+import { apiRequest } from "@/lib/queryClient";
 import {
-  Sparkles, Globe, Layers, Zap, Plus, Eye, Download, Share2,
-  LayoutTemplate, ArrowRight, Search, ChevronDown, X,
+  Sparkles, Globe, Layers, Zap, Eye, Download, Share2,
+  Search, X, ImagePlus,
   Scale, UtensilsCrossed, Stethoscope, Car, Shield, Activity,
   GraduationCap, ShoppingBag, PawPrint, Camera, Heart, Home,
   Dumbbell, Gem, Megaphone, Building2, Wrench, Scissors,
-  Briefcase, Truck, Leaf, Wifi, Music, Plane, Baby, Dog,
-  Coffee, Pizza, Fish, Flower, Hammer, Zap as ZapIcon,
+  Briefcase, Truck, Leaf, Music, Baby, Dog,
+  Coffee, Fish, Flower, Hammer, Zap as ZapIcon,
   Star, Brain, Cpu, Rocket, Target, TrendingUp, Users,
   Building, ShoppingCart, Palette, BookOpen, Bike, Anchor,
-  Sun, Moon, Droplets, Flame,
+  Sun, Moon, Droplets, Flame, ArrowLeft, Check, RefreshCw,
+  ChevronRight,
 } from "lucide-react";
 
 // ── 3D Scene ──────────────────────────────────────────────────────────────────
@@ -312,285 +318,792 @@ const TEMPLATES: TemplateItem[] = [
   { id: "community-center", name: "Community Center", desc: "Welcoming palette, program directory, volunteer CTA", category: "Nonprofit & Community", color: "#16a34a", sceneColors: ["#14532d", "#16a34a", "#f59e0b"], icon: Users, tags: ["Community", "Bright"], style: "welcoming" },
 ];
 
-// ── Template Card ─────────────────────────────────────────────────────────────
+// ── Prompt Intent Extraction ──────────────────────────────────────────────────
 
-function TemplateCard({ template, selected, onSelect }: { template: TemplateItem; selected: string; onSelect: (id: string) => void }) {
+interface PromptIntent {
+  businessName: string;
+  focalObject: string;
+  displayLabel: string;
+  templateHint: string;
+  conflict: boolean;
+}
+
+const INTENT_MAP: Array<[RegExp, string, string]> = [
+  [/barber\s*shop|barber\s*chair|fade\s*cut|hair\s*cut\s*shop/i, "Barber Shop", "barber-shop"],
+  [/coffee\s*shop|espresso|cafe|latte|cappuccino/i, "Coffee Shop", "coffee-shop"],
+  [/med\s*spa|medspa|botox|filler|aesthetics|microneedling/i, "Med Spa", "medspa"],
+  [/roofing|roof\s*repair|storm\s*damage\s*roof/i, "Roofing Company", "roofing"],
+  [/criminal\s*defense|criminal\s*lawyer|defense\s*attorney/i, "Criminal Defense Attorney", "criminal-defense"],
+  [/personal\s*injury|accident\s*lawyer|injury\s*attorney/i, "Personal Injury Law", "personal-injury-law"],
+  [/dental|dentist|tooth|teeth|smile/i, "Dental Practice", "dentist"],
+  [/dog\s*groo|pet\s*groo|puppy\s*wash/i, "Dog Grooming", "dog-grooming"],
+  [/gym|fitness\s*center|weight\s*room|workout/i, "Gym & Fitness", "gym"],
+  [/yoga/i, "Yoga Studio", "yoga-studio"],
+  [/realtor|real\s*estate|property\s*listing/i, "Real Estate", "residential-realtor"],
+  [/restaurant|bistro|eatery|dining\s*room/i, "Restaurant", "restaurant"],
+  [/pizza/i, "Pizzeria", "restaurant"],
+  [/auto\s*repair|mechanic|car\s*shop/i, "Auto Repair", "auto-repair"],
+  [/plumb/i, "Plumbing", "plumbing"],
+  [/hvac|air\s*condition/i, "HVAC", "hvac"],
+  [/law\s*firm|attorney|lawyer/i, "Law Firm", "personal-injury-law"],
+  [/solar/i, "Solar Company", "solar"],
+  [/tattoo/i, "Tattoo Studio", "tattoo-studio"],
+  [/nail\s*salon/i, "Nail Salon", "nail-salon"],
+  [/chiropract/i, "Chiropractic Clinic", "chiropractor"],
+  [/financial\s*advisor|wealth\s*manag/i, "Financial Advisor", "financial-advisor"],
+  [/saas|software|app\s*landing|tech\s*startup/i, "SaaS / Tech", "saas-dark"],
+  [/wedding\s*plann/i, "Wedding Planner", "wedding-planner"],
+  [/nonprofit|charity|donation/i, "Nonprofit", "nonprofit"],
+  [/church|ministry|congregation/i, "Church", "church"],
+  [/landscap|lawn\s*care|gardening/i, "Landscaping", "landscaping"],
+  [/photography|photo\s*studio/i, "Photography Studio", "photography-studio"],
+  [/food\s*truck/i, "Food Truck", "food-truck"],
+  [/bakery|pastry|cake\s*shop/i, "Bakery", "bakery"],
+  [/insurance/i, "Insurance Agency", "insurance-agency"],
+  [/contractor|construction|remodel/i, "Contractor", "general-contractor"],
+  [/pet\s*board|doggy\s*daycare/i, "Pet Boarding", "pet-boarding"],
+  [/vet|veterinar/i, "Veterinary Clinic", "veterinarian"],
+  [/massage|spa\s*therapy/i, "Massage Therapy", "massage-therapy"],
+  [/pilates/i, "Pilates Studio", "pilates-studio"],
+  [/crossfit/i, "CrossFit Box", "crossfit"],
+  [/martial\s*arts|bjj|karate|judo/i, "Martial Arts", "martial-arts"],
+  [/luxury\s*real\s*estate/i, "Luxury Real Estate", "luxury-real-estate"],
+];
+
+function extractPromptIntent(prompt: string, selectedTemplateId: string): PromptIntent {
+  if (!prompt.trim()) {
+    return { businessName: "", focalObject: "", displayLabel: "", templateHint: "", conflict: false };
+  }
+  let businessName = "";
+  let templateHint = "";
+  for (const [pattern, name, tid] of INTENT_MAP) {
+    if (pattern.test(prompt)) { businessName = name; templateHint = tid; break; }
+  }
+  const focalMatch = prompt.match(
+    /(?:spinning|rotating|3d|interactive|floating|animated|a\s+giant|hero\s+(?:is\s+a|shows?)\s+(?:a\s+)?|featuring\s+a\s+|with\s+a\s+(?:spinning\s+|rotating\s+|3d\s+)?)([a-z][a-z\s]{2,30}?)(?:\s+in\s+|\s+as\s+|\s+for\s+|[,.]|$)/i
+  );
+  const focalObject = focalMatch ? focalMatch[1].trim() : "";
+  const displayLabel = businessName || (focalObject ? focalObject : "");
+  const conflict = !!templateHint && templateHint !== selectedTemplateId && !!businessName;
+  return { businessName, focalObject, displayLabel, templateHint, conflict };
+}
+
+// ── Example Prompts ───────────────────────────────────────────────────────────
+
+const EXAMPLE_PROMPTS = [
+  "Barber shop with a spinning 3D razor, dark masculine aesthetic",
+  "Dog grooming studio with playful floating paw prints",
+  "Dark luxury med spa with rose gold particles and cinematic lighting",
+  "Roofing company, storm damage urgency, bold emergency CTA",
+  "Coffee shop with a giant espresso machine rotating in 3D hero",
+  "AI startup with neural network particles and neon glow",
+  "Wedding planner with romantic floating petals and soft pastels",
+  "CrossFit box with explosive fire energy and bold dark aesthetic",
+];
+
+// ── Template Swatch Card ──────────────────────────────────────────────────────
+
+function TemplateSwatchCard({ template, selected, onSelect }: { template: TemplateItem; selected: string; onSelect: (id: string) => void }) {
+  const isSelected = selected === template.id;
   return (
-    <motion.div
-      whileHover={{ scale: 1.02, y: -2 }}
-      whileTap={{ scale: 0.98 }}
+    <motion.button
+      whileHover={{ scale: 1.03, y: -2 }}
+      whileTap={{ scale: 0.97 }}
       onClick={() => onSelect(template.id)}
-      className={`relative cursor-pointer rounded-xl border p-3 transition-all ${
-        selected === template.id
-          ? "border-purple-500 bg-purple-500/10"
-          : "border-white/10 bg-white/5 hover:border-white/20"
+      className={`relative w-full text-left rounded-xl overflow-hidden transition-all ${
+        isSelected
+          ? "ring-2 ring-purple-500 ring-offset-2 ring-offset-[#080a14]"
+          : "ring-1 ring-white/[0.07] hover:ring-white/20"
       }`}
     >
-      <div className="flex items-start gap-2.5">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
-          style={{ backgroundColor: template.color + "22", border: `1px solid ${template.color}44` }}>
-          <template.icon className="w-4 h-4" style={{ color: template.color }} />
+      {/* Color swatch preview */}
+      <div
+        className="h-14 relative overflow-hidden"
+        style={{
+          background: `linear-gradient(135deg, ${template.sceneColors[0]}dd 0%, ${template.sceneColors[1]}dd 100%)`,
+        }}
+      >
+        {/* Subtle icon watermark */}
+        <div className="absolute inset-0 flex items-center justify-center opacity-[0.18]">
+          <template.icon className="w-9 h-9 text-white" />
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-white text-xs leading-tight">{template.name}</p>
-          <p className="text-[10px] text-white/40 mt-0.5 leading-relaxed line-clamp-2">{template.desc}</p>
-          <div className="flex gap-1 mt-1.5 flex-wrap">
-            {template.tags.slice(0, 3).map((tag) => (
-              <span key={tag} className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/10 text-white/50">{tag}</span>
-            ))}
-          </div>
+        {/* Color dots */}
+        <div className="absolute bottom-2 left-2 flex gap-1">
+          {template.sceneColors.filter(Boolean).map((c, i) => (
+            <div
+              key={i}
+              className="w-2.5 h-2.5 rounded-full border border-white/25 shadow-sm"
+              style={{ backgroundColor: c }}
+            />
+          ))}
+        </div>
+        {/* Selected checkmark */}
+        {isSelected && (
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            className="absolute top-2 right-2 w-5 h-5 rounded-full bg-purple-500 flex items-center justify-center shadow-lg"
+          >
+            <Check className="w-3 h-3 text-white" strokeWidth={3} />
+          </motion.div>
+        )}
+      </div>
+      {/* Name + tags */}
+      <div className="px-2.5 py-2 bg-[#0d0f1c]">
+        <p className="text-white text-[11px] font-semibold truncate leading-tight">{template.name}</p>
+        <div className="flex gap-1 mt-1">
+          {template.tags.slice(0, 2).map(tag => (
+            <span
+              key={tag}
+              className="text-[9px] px-1.5 py-0.5 rounded-full shrink-0 font-medium"
+              style={{ backgroundColor: template.color + "28", color: template.color }}
+            >
+              {tag}
+            </span>
+          ))}
         </div>
       </div>
-      {selected === template.id && (
-        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }}
-          className="absolute top-2.5 right-2.5 w-4 h-4 rounded-full bg-purple-500 flex items-center justify-center">
-          <div className="w-1.5 h-1.5 rounded-full bg-white" />
-        </motion.div>
-      )}
-    </motion.div>
+    </motion.button>
   );
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function DynamicPages() {
+  const { user } = useAuth();
+  const isAdmin = user?.isAdmin === "true" || (user as any)?.role === "DEV_ADMIN";
+  const subAccountId = useActiveSubAccountId();
+
   const [selectedTemplate, setSelectedTemplate] = useState(TEMPLATES[0].id);
-  const [tab, setTab] = useState<"templates" | "builder">("templates");
-  const [pageName, setPageName] = useState("");
+  const [phase, setPhase] = useState<"design" | "build">("design");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [isGenerating, setIsGenerating] = useState(false);
   const [generated, setGenerated] = useState(false);
-  const [showCatMenu, setShowCatMenu] = useState(false);
+  const [currentSchema, setCurrentSchema] = useState<DynamicPageSchema | null>(null);
+  const [previewSchema, setPreviewSchema] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [generatedBusinessName, setGeneratedBusinessName] = useState("");
+  const [uploadedImageUrl, setUploadedImageUrl] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const [showAllExamples, setShowAllExamples] = useState(false);
+  const uploadRef = useRef<HTMLInputElement>(null);
+
+  const promptIntent = useMemo(
+    () => extractPromptIntent(customPrompt, selectedTemplate),
+    [customPrompt, selectedTemplate]
+  );
+
+  const handleImageUpload = useCallback(async (file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    setIsUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("files", file);
+      const res = await fetch("/api/media/upload", { method: "POST", body: fd, credentials: "include" });
+      const json = await res.json();
+      const url = json.uploaded?.[0]?.url ?? json.url ?? "";
+      if (url) setUploadedImageUrl(url);
+    } catch { /* silent */ }
+    finally { setIsUploading(false); }
+  }, []);
 
   const activeTemplate = TEMPLATES.find(t => t.id === selectedTemplate) ?? TEMPLATES[0];
+
+  const handleSchemaUpdate = useCallback((schema: DynamicPageSchema) => {
+    setCurrentSchema(schema);
+    setGenerated(true);
+  }, []);
 
   const filtered = useMemo(() => {
     return TEMPLATES.filter(t => {
       const matchCat = category === "All" || t.category === category;
-      const matchSearch = !search || t.name.toLowerCase().includes(search.toLowerCase()) || t.category.toLowerCase().includes(search.toLowerCase()) || t.tags.some(tag => tag.toLowerCase().includes(search.toLowerCase()));
+      const matchSearch = !search
+        || t.name.toLowerCase().includes(search.toLowerCase())
+        || t.category.toLowerCase().includes(search.toLowerCase())
+        || t.tags.some(tag => tag.toLowerCase().includes(search.toLowerCase()));
       return matchCat && matchSearch;
     });
   }, [category, search]);
 
   const handleGenerate = async () => {
     setIsGenerating(true);
-    await new Promise(r => setTimeout(r, 2800));
-    setIsGenerating(false);
-    setGenerated(true);
-    setTab("builder");
+    const userTyped = customPrompt.trim();
+    try {
+      const templateVisual = [
+        `Visual style: ${activeTemplate.style}`,
+        `Color palette: ${activeTemplate.sceneColors.filter(Boolean).join(", ")}`,
+        `Mood tags: ${activeTemplate.tags.join(", ")}`,
+      ].join(". ");
+
+      let prompt: string;
+      if (userTyped) {
+        const focalHint = promptIntent.focalObject ? `Primary 3D focal object: ${promptIntent.focalObject}. ` : "";
+        const visualLayer = !promptIntent.conflict ? ` ${templateVisual}.` : "";
+        prompt = `${focalHint}${userTyped}.${visualLayer}`;
+      } else {
+        prompt = `${activeTemplate.name}: ${activeTemplate.desc}. ${templateVisual}.`;
+      }
+
+      const res = await apiRequest("POST", "/api/dynamic-pages/generate", {
+        prompt,
+        subAccountId,
+        imageUrl: uploadedImageUrl || undefined,
+        templateId: activeTemplate.id,
+      });
+      const data = await res.json();
+      if (data?.schema) {
+        setCurrentSchema(data.schema);
+        setGenerated(true);
+        setPhase("build");
+        setGeneratedBusinessName(
+          data.schema?.meta?.title || promptIntent.businessName || activeTemplate.name
+        );
+      }
+    } catch {
+      setGenerated(true);
+      setPhase("build");
+    } finally {
+      setIsGenerating(false);
+    }
   };
+
+  const exampleChips = showAllExamples ? EXAMPLE_PROMPTS : EXAMPLE_PROMPTS.slice(0, 3);
 
   return (
     <div className="h-screen w-full flex flex-col bg-[#030712] overflow-hidden">
-      {/* Header */}
-      <div className="shrink-0 border-b border-white/5 px-6 py-3 flex items-center justify-between">
+
+      {/* ── Header ─────────────────────────────────────────────────────────── */}
+      <header className="shrink-0 border-b border-white/[0.06] px-5 py-2.5 flex items-center justify-between bg-[#05070f]">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-purple-500/20 border border-purple-500/30 flex items-center justify-center">
-            <Layers className="w-4 h-4 text-purple-400" />
+          <div className="w-7 h-7 rounded-lg bg-purple-500/20 border border-purple-500/30 flex items-center justify-center">
+            <Layers className="w-3.5 h-3.5 text-purple-400" />
           </div>
           <div>
-            <h1 className="text-white font-semibold text-sm">Dynamic Pages</h1>
-            <p className="text-white/40 text-xs">{TEMPLATES.length} 3D Templates · WebGL Powered</p>
+            <h1 className="text-white font-bold text-sm leading-none">Dynamic Pages</h1>
+            <p className="text-white/30 text-[11px] mt-0.5">{TEMPLATES.length} AI templates · WebGL 3D scenes</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="outline" className="border-purple-500/30 text-purple-400 text-xs">
+          <Badge variant="outline" className="border-purple-500/30 text-purple-400 text-[10px] h-6 px-2">
             React Three Fiber
           </Badge>
           {generated && (
-            <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="flex gap-2">
-              <Button size="sm" variant="ghost" className="text-white/60 hover:text-white h-7 text-xs gap-1">
-                <Eye className="w-3 h-3" /> Preview
-              </Button>
-              <Button size="sm" variant="ghost" className="text-white/60 hover:text-white h-7 text-xs gap-1">
+            <motion.div
+              initial={{ opacity: 0, x: 10 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="flex gap-1.5"
+            >
+              {currentSchema && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setPreviewSchema(v => !v)}
+                  className="h-7 text-xs text-white/50 hover:text-white gap-1.5"
+                >
+                  <Eye className="w-3 h-3" />
+                  {previewSchema ? "3D Scene" : "Full Preview"}
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" className="h-7 text-xs text-white/50 hover:text-white gap-1.5">
                 <Share2 className="w-3 h-3" /> Publish
               </Button>
-              <Button size="sm" className="bg-purple-600 hover:bg-purple-700 h-7 text-xs gap-1">
+              <Button size="sm" className="h-7 text-xs bg-purple-600 hover:bg-purple-700 gap-1.5">
                 <Download className="w-3 h-3" /> Export
               </Button>
             </motion.div>
           )}
         </div>
-      </div>
+      </header>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel */}
-        <div className="w-72 shrink-0 border-r border-white/5 flex flex-col overflow-hidden">
-          <div className="flex border-b border-white/5">
-            {(["templates", "builder"] as const).map(t => (
-              <button key={t} onClick={() => setTab(t)}
-                className={`flex-1 py-2.5 text-xs font-medium capitalize transition-colors ${
-                  tab === t ? "text-white border-b-2 border-purple-500" : "text-white/40 hover:text-white/70"
-                }`}>
-                {t === "templates" ? `Templates (${TEMPLATES.length})` : "Builder"}
-              </button>
-            ))}
+
+        {/* ── Left Panel ─────────────────────────────────────────────────────── */}
+        <aside className="w-[380px] shrink-0 border-r border-white/[0.06] flex flex-col overflow-hidden bg-[#060810]">
+
+          {/* Phase toggle */}
+          <div className="flex border-b border-white/[0.06] px-4 pt-3 gap-4">
+            <button
+              onClick={() => setPhase("design")}
+              className={`pb-2.5 text-xs font-semibold transition-colors border-b-2 ${
+                phase === "design"
+                  ? "text-white border-purple-500"
+                  : "text-white/35 border-transparent hover:text-white/60"
+              }`}
+            >
+              Design
+            </button>
+            <button
+              onClick={() => setPhase("build")}
+              disabled={!generated}
+              className={`pb-2.5 text-xs font-semibold transition-colors border-b-2 flex items-center gap-1.5 ${
+                phase === "build" && generated
+                  ? "text-white border-purple-500"
+                  : "text-white/25 border-transparent"
+              } disabled:cursor-not-allowed`}
+            >
+              Edit
+              {generated && (
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block" />
+              )}
+            </button>
           </div>
 
-          {tab === "templates" && (
-            <>
-              {/* Search + Category */}
-              <div className="p-3 space-y-2 border-b border-white/5">
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30" />
-                  <input
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    placeholder="Search templates..."
-                    className="w-full bg-white/5 border border-white/10 rounded-lg pl-8 pr-3 py-1.5 text-white text-xs placeholder:text-white/30 outline-none focus:border-purple-500/50"
-                  />
-                  {search && <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2"><X className="w-3 h-3 text-white/40" /></button>}
+          {/* ──────────────────────────────────────── DESIGN PHASE */}
+          {phase === "design" && (
+            <div className="flex-1 flex flex-col overflow-hidden">
+
+              {/* SECTION A: Prompt */}
+              <div className="px-4 pt-4 pb-3 space-y-3 border-b border-white/[0.05]">
+
+                {/* Section label */}
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                  <span className="text-[11px] font-bold text-white/70 uppercase tracking-widest">Describe Your Page</span>
                 </div>
-                <div className="relative">
-                  <button onClick={() => setShowCatMenu(!showCatMenu)}
-                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white/70 flex items-center justify-between hover:border-white/20">
-                    <span className="truncate">{category}</span>
-                    <ChevronDown className="w-3 h-3 shrink-0 ml-1" />
-                  </button>
-                  {showCatMenu && (
-                    <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }}
-                      className="absolute top-full mt-1 left-0 right-0 bg-neutral-900 border border-white/10 rounded-lg z-50 overflow-hidden shadow-2xl max-h-48 overflow-y-auto">
-                      {CATEGORIES.map(cat => (
-                        <button key={cat} onClick={() => { setCategory(cat); setShowCatMenu(false); }}
-                          className={`w-full text-left px-3 py-1.5 text-xs hover:bg-white/5 transition-colors ${category === cat ? "text-purple-400" : "text-white/70"}`}>
-                          {cat}
-                        </button>
-                      ))}
+
+                {/* Intent badge — appears as user types */}
+                <AnimatePresence>
+                  {promptIntent.displayLabel && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                      animate={{ opacity: 1, height: "auto", marginTop: 0 }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="flex items-center gap-2 px-3 py-2 rounded-lg border border-purple-500/30 bg-purple-500/[0.08]"
+                    >
+                      <Zap className="w-3 h-3 text-purple-400 shrink-0" />
+                      <span className="text-purple-300 text-[11px]">
+                        Detected: <span className="font-bold text-white">{promptIntent.displayLabel}</span>
+                      </span>
+                      {promptIntent.conflict && (
+                        <span className="ml-auto text-[10px] text-amber-400 shrink-0">overrides template</span>
+                      )}
                     </motion.div>
                   )}
-                </div>
-                <p className="text-white/30 text-[10px]">{filtered.length} template{filtered.length !== 1 ? "s" : ""}</p>
-              </div>
+                </AnimatePresence>
 
-              {/* Template List */}
-              <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
-                {filtered.length === 0 ? (
-                  <div className="text-center text-white/30 text-xs py-8">No templates match</div>
-                ) : (
-                  filtered.map(t => (
-                    <TemplateCard key={t.id} template={t} selected={selectedTemplate} onSelect={setSelectedTemplate} />
-                  ))
-                )}
-              </div>
-
-              {/* Generate CTA */}
-              <div className="p-3 border-t border-white/5 space-y-2">
-                <input
-                  value={pageName}
-                  onChange={e => setPageName(e.target.value)}
-                  placeholder="Page name (optional)"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs placeholder:text-white/30 outline-none focus:border-purple-500/50"
+                {/* Prompt textarea */}
+                <textarea
+                  value={customPrompt}
+                  onChange={e => setCustomPrompt(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void handleGenerate(); } }}
+                  placeholder={'Describe your business and vibe...\ne.g. "Barber shop with spinning 3D razor, dark masculine aesthetic"'}
+                  rows={4}
+                  maxLength={1500}
+                  className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3.5 py-3 text-white text-[12px] placeholder:text-white/25 resize-none outline-none focus:border-purple-500/50 focus:bg-white/[0.06] transition-all leading-relaxed"
                 />
-                <Button onClick={handleGenerate} disabled={isGenerating}
-                  className="w-full bg-purple-600 hover:bg-purple-700 text-white text-sm h-9 gap-2">
-                  {isGenerating ? (
+
+                {/* Example chips */}
+                <div>
+                  <p className="text-[10px] text-white/25 mb-1.5 uppercase tracking-wider font-medium">Try an example</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {exampleChips.map((ex, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setCustomPrompt(ex)}
+                        className="px-2.5 py-1 rounded-full text-[10px] font-medium bg-white/[0.04] border border-white/[0.08] text-white/45 hover:text-white/80 hover:bg-white/[0.08] hover:border-white/20 transition-all text-left"
+                      >
+                        {ex.length > 36 ? ex.slice(0, 36) + "…" : ex}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setShowAllExamples(v => !v)}
+                      className="px-2 py-1 rounded-full text-[10px] text-white/25 hover:text-white/50 transition-colors"
+                    >
+                      {showAllExamples ? "less" : "more…"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION B: Image upload + Generate */}
+              <div className="px-4 py-3 space-y-2.5 border-b border-white/[0.05]">
+
+                {/* Image upload row */}
+                <input
+                  ref={uploadRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={e => e.target.files?.[0] && void handleImageUpload(e.target.files[0])}
+                />
+                <div
+                  onClick={() => uploadRef.current?.click()}
+                  onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) void handleImageUpload(f); }}
+                  onDragOver={e => e.preventDefault()}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl border border-dashed border-white/[0.08] hover:border-purple-500/35 cursor-pointer transition-colors group"
+                >
+                  {uploadedImageUrl ? (
                     <>
-                      <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                        className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full" />
-                      Building 3D Scene...
+                      <img src={uploadedImageUrl} className="w-8 h-8 rounded-lg object-cover shrink-0" alt="uploaded" />
+                      <span className="text-white/60 text-[11px] flex-1 truncate">Image attached</span>
+                      <button
+                        onClick={e => { e.stopPropagation(); setUploadedImageUrl(""); }}
+                        className="w-5 h-5 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors shrink-0"
+                      >
+                        <X className="w-3 h-3 text-white/60" />
+                      </button>
                     </>
                   ) : (
-                    <><Sparkles className="w-3.5 h-3.5" /> Generate · {activeTemplate.name}</>
+                    <>
+                      <div className="w-8 h-8 rounded-lg bg-white/[0.04] border border-white/10 flex items-center justify-center group-hover:border-purple-500/30 transition-colors shrink-0">
+                        <ImagePlus className="w-4 h-4 text-white/25 group-hover:text-purple-400 transition-colors" />
+                      </div>
+                      <div>
+                        <p className="text-white/40 text-[11px] font-medium">
+                          {isUploading ? "Uploading…" : "Add image"}
+                        </p>
+                        <p className="text-white/20 text-[10px]">logo, photo, product</p>
+                      </div>
+                    </>
                   )}
-                </Button>
-              </div>
-            </>
-          )}
+                </div>
 
-          {tab === "builder" && (
-            <div className="flex-1 overflow-y-auto p-3 space-y-3">
-              <p className="text-white/40 text-xs px-1">Add sections</p>
-              {[
-                { label: "3D Hero", icon: Globe, desc: "Interactive WebGL hero" },
-                { label: "Feature Grid", icon: Layers, desc: "Animated feature cards" },
-                { label: "Stats Counter", icon: TrendingUp, desc: "Counting number reveal" },
-                { label: "Testimonials", icon: Star, desc: "Scroll carousel" },
-                { label: "3D CTA", icon: Rocket, desc: "Floating 3D call to action" },
-                { label: "Pricing Table", icon: Target, desc: "Tiered pricing comparison" },
-                { label: "Photo Gallery", icon: Camera, desc: "Masonry grid gallery" },
-                { label: "Contact Form", icon: LayoutTemplate, desc: "Glassmorphism form" },
-                { label: "FAQ Accordion", icon: BookOpen, desc: "Animated expand/collapse" },
-                { label: "Team Section", icon: Users, desc: "Bio cards with hover fx" },
-                { label: "Video Hero", icon: Cpu, desc: "Autoplay background video" },
-                { label: "Map Section", icon: Globe, desc: "Interactive location map" },
-              ].map(s => (
-                <motion.div key={s.label} whileHover={{ x: 2 }}
-                  className="flex items-center gap-3 p-2.5 rounded-xl border border-white/10 hover:border-purple-500/30 hover:bg-purple-500/5 cursor-pointer transition-all">
-                  <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
-                    <s.icon className="w-4 h-4 text-purple-400" />
+                {/* Generate button */}
+                <button
+                  onClick={() => void handleGenerate()}
+                  disabled={isGenerating}
+                  className="w-full h-11 rounded-xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    background: isGenerating
+                      ? "linear-gradient(135deg, #4c1d95, #1e3a8a)"
+                      : `linear-gradient(135deg, ${activeTemplate.sceneColors[0]}, ${activeTemplate.sceneColors[1]})`,
+                    boxShadow: isGenerating ? "none" : `0 4px 24px ${activeTemplate.sceneColors[0]}55`,
+                  }}
+                >
+                  {isGenerating ? (
+                    <>
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                        className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
+                      />
+                      <span className="text-white">
+                        {promptIntent.displayLabel ? `Building ${promptIntent.displayLabel}…` : "Generating…"}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 text-white" />
+                      <span className="text-white">
+                        Generate · {promptIntent.displayLabel || activeTemplate.name}
+                      </span>
+                    </>
+                  )}
+                </button>
+                <p className="text-white/20 text-[10px] text-center">⌘ Enter to generate · Prompt overrides template</p>
+              </div>
+
+              {/* SECTION C: Style Seeds (Template Gallery) */}
+              <div className="flex-1 flex flex-col overflow-hidden">
+
+                {/* Section label + count */}
+                <div className="flex items-center justify-between px-4 py-2.5">
+                  <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">Style Seeds</span>
+                  <span className="text-[10px] text-white/20">{filtered.length} of {TEMPLATES.length}</span>
+                </div>
+
+                {/* Category pills — horizontal scroll */}
+                <div className="flex gap-1.5 px-4 pb-2.5 overflow-x-auto"
+                  style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
+                  {CATEGORIES.map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => setCategory(cat)}
+                      className={`shrink-0 px-3 py-1 rounded-full text-[10px] font-semibold transition-all border ${
+                        category === cat
+                          ? "bg-purple-500/20 text-purple-300 border-purple-500/40"
+                          : "bg-white/[0.03] text-white/35 border-white/[0.07] hover:text-white/60 hover:bg-white/[0.06]"
+                      }`}
+                    >
+                      {cat === "All" ? `All (${TEMPLATES.length})` : cat.replace(" & ", " & ")}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Search */}
+                <div className="px-4 pb-2.5">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/25" />
+                    <input
+                      value={search}
+                      onChange={e => setSearch(e.target.value)}
+                      placeholder="Search templates…"
+                      className="w-full bg-white/[0.03] border border-white/[0.07] rounded-lg pl-8 pr-8 py-1.5 text-white text-[11px] placeholder:text-white/20 outline-none focus:border-purple-500/40 transition-colors"
+                    />
+                    {search && (
+                      <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                        <X className="w-3 h-3 text-white/30 hover:text-white/60 transition-colors" />
+                      </button>
+                    )}
                   </div>
-                  <div>
-                    <p className="text-white text-xs font-medium">{s.label}</p>
-                    <p className="text-white/40 text-[10px]">{s.desc}</p>
-                  </div>
-                  <Plus className="w-3.5 h-3.5 text-white/30 ml-auto" />
-                </motion.div>
-              ))}
+                </div>
+
+                {/* Template 2-col grid */}
+                <div className="flex-1 overflow-y-auto px-4 pb-4">
+                  {filtered.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <Search className="w-8 h-8 text-white/10 mb-3" />
+                      <p className="text-white/30 text-xs">No templates match "{search}"</p>
+                      <button onClick={() => { setSearch(""); setCategory("All"); }} className="mt-2 text-purple-400 text-xs hover:text-purple-300 transition-colors">Clear filters</button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      {filtered.map(t => (
+                        <TemplateSwatchCard
+                          key={t.id}
+                          template={t}
+                          selected={selectedTemplate}
+                          onSelect={setSelectedTemplate}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
-        </div>
 
-        {/* 3D Canvas */}
-        <div className="flex-1 relative overflow-hidden">
-          <Canvas camera={{ position: [0, 0, 8], fov: 60 }} gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }} dpr={[1, 2]}>
-            <Suspense fallback={null}>
-              <Scene template={activeTemplate} />
-              <OrbitControls enablePan={false} enableZoom={false} autoRotate autoRotateSpeed={0.4}
-                maxPolarAngle={Math.PI / 1.8} minPolarAngle={Math.PI / 3} />
-            </Suspense>
-          </Canvas>
+          {/* ──────────────────────────────────────── BUILD PHASE */}
+          {phase === "build" && (
+            <div className="flex-1 flex flex-col overflow-hidden">
 
-          {/* Overlay */}
-          <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
-            <AnimatePresence mode="wait">
-              {!generated ? (
-                <motion.div key="idle" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="text-center px-8">
-                  <motion.div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs border mb-4"
-                    style={{ borderColor: activeTemplate.color + "44", color: activeTemplate.color, backgroundColor: activeTemplate.color + "11" }}>
-                    <activeTemplate.icon className="w-3 h-3" />
-                    {activeTemplate.name}
-                  </motion.div>
-                  <motion.h2 className="text-4xl font-black text-white mb-2"
-                    style={{ textShadow: `0 0 60px ${activeTemplate.color}99` }}
-                    animate={{ opacity: [0.8, 1, 0.8] }} transition={{ duration: 3, repeat: Infinity }}>
-                    {activeTemplate.category}
-                  </motion.h2>
-                  <p className="text-white/50 text-sm max-w-xs mx-auto">{activeTemplate.desc}</p>
-                  <div className="flex gap-2 justify-center mt-4 flex-wrap">
-                    {activeTemplate.tags.map(tag => (
-                      <Badge key={tag} className="text-[10px]" style={{ backgroundColor: activeTemplate.color + "22", borderColor: activeTemplate.color + "44", color: activeTemplate.color }}>{tag}</Badge>
-                    ))}
+              {/* Generated page info banner */}
+              {generatedBusinessName && (
+                <div
+                  className="mx-4 mt-4 px-4 py-3 rounded-xl border flex items-center gap-3"
+                  style={{
+                    borderColor: activeTemplate.sceneColors[0] + "44",
+                    backgroundColor: activeTemplate.sceneColors[0] + "11",
+                  }}
+                >
+                  <div
+                    className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: activeTemplate.sceneColors[0] + "22" }}
+                  >
+                    <activeTemplate.icon className="w-4.5 h-4.5" style={{ color: activeTemplate.sceneColors[0] }} />
                   </div>
-                </motion.div>
-              ) : (
-                <motion.div key="done" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center pointer-events-auto">
-                  <motion.div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
-                    style={{ backgroundColor: activeTemplate.color + "22", border: `1px solid ${activeTemplate.color}44` }}
-                    animate={{ boxShadow: [`0 0 20px ${activeTemplate.color}44`, `0 0 40px ${activeTemplate.color}88`, `0 0 20px ${activeTemplate.color}44`] }}
-                    transition={{ duration: 2, repeat: Infinity }}>
-                    <Sparkles className="w-8 h-8" style={{ color: activeTemplate.color }} />
-                  </motion.div>
-                  <h3 className="text-3xl font-bold text-white mb-2">{pageName || activeTemplate.name} is ready</h3>
-                  <p className="text-white/50 text-sm mb-4">3D scene built · Animations wired · Ready to publish</p>
-                  <div className="flex gap-2 justify-center">
-                    <Button size="sm" variant="outline" className="border-white/20 text-white/70 hover:text-white gap-1.5 text-xs">
-                      <Eye className="w-3.5 h-3.5" /> Live Preview
-                    </Button>
-                    <Button size="sm" className="gap-1.5 text-xs" style={{ backgroundColor: activeTemplate.color }}>
-                      <ArrowRight className="w-3.5 h-3.5" /> Publish Now
-                    </Button>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-white text-xs font-bold truncate">{generatedBusinessName}</p>
+                    <p className="text-white/40 text-[10px]">AI generated · WebGL scene live</p>
                   </div>
-                </motion.div>
+                  <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse shrink-0" />
+                </div>
               )}
-            </AnimatePresence>
-          </div>
 
+              {/* PromptDesignPanel */}
+              <div className="flex-1 overflow-y-auto px-4 py-4">
+                <PromptDesignPanel
+                  currentSchema={currentSchema}
+                  onSchemaUpdate={handleSchemaUpdate}
+                  isAdmin={isAdmin}
+                  subAccountId={subAccountId ?? undefined}
+                />
+              </div>
+
+              {/* Back to design */}
+              <div className="px-4 py-3 border-t border-white/[0.05]">
+                <button
+                  onClick={() => setPhase("design")}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl border border-white/[0.08] hover:border-purple-500/30 hover:bg-purple-500/[0.04] text-white/35 hover:text-white/70 text-[11px] font-medium transition-all"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
+                  Back to Design — generate a new page
+                </button>
+              </div>
+            </div>
+          )}
+        </aside>
+
+        {/* ── Right: 3D Canvas / Preview ────────────────────────────────────── */}
+        <main className="flex-1 relative overflow-hidden">
+
+          {/* Full-page schema preview */}
+          {currentSchema && previewSchema ? (
+            <div className="absolute inset-0 overflow-y-auto">
+              <DynamicPageRenderer schema={currentSchema} isPreview heroHeight="400px" />
+            </div>
+          ) : (
+            <Canvas
+              camera={{ position: [0, 0, 8], fov: 60 }}
+              gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
+              dpr={[1, 2]}
+            >
+              <Suspense fallback={null}>
+                <Scene template={activeTemplate} />
+                <OrbitControls
+                  enablePan={false}
+                  enableZoom={false}
+                  autoRotate
+                  autoRotateSpeed={0.4}
+                  maxPolarAngle={Math.PI / 1.8}
+                  minPolarAngle={Math.PI / 3}
+                />
+              </Suspense>
+            </Canvas>
+          )}
+
+          {/* Canvas overlay — idle state */}
+          {!previewSchema && (
+            <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center">
+              <AnimatePresence mode="wait">
+                {!generated ? (
+                  <motion.div
+                    key="idle"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="text-center px-8 max-w-lg"
+                  >
+                    {promptIntent.displayLabel ? (
+                      <>
+                        <motion.div
+                          className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs border mb-5 border-purple-500/40 text-purple-300 bg-purple-500/10"
+                        >
+                          <Zap className="w-3 h-3" />
+                          Prompt detected
+                        </motion.div>
+                        <motion.h2
+                          className="text-5xl font-black text-white mb-3 leading-none"
+                          style={{ textShadow: "0 0 80px #a855f766" }}
+                          animate={{ opacity: [0.85, 1, 0.85] }}
+                          transition={{ duration: 3, repeat: Infinity }}
+                        >
+                          {promptIntent.businessName || promptIntent.focalObject || "Custom Site"}
+                        </motion.h2>
+                        {promptIntent.focalObject && (
+                          <p className="text-white/50 text-sm mb-3">
+                            3D object: <span className="text-purple-400 font-semibold">{promptIntent.focalObject}</span>
+                          </p>
+                        )}
+                        <p className="text-white/35 text-sm">Hit Generate to build your custom WebGL page</p>
+                      </>
+                    ) : (
+                      <>
+                        <motion.div
+                          className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs border mb-5"
+                          style={{
+                            borderColor: activeTemplate.color + "55",
+                            color: activeTemplate.color,
+                            backgroundColor: activeTemplate.color + "14",
+                          }}
+                        >
+                          <activeTemplate.icon className="w-3 h-3" />
+                          {activeTemplate.name}
+                        </motion.div>
+                        <motion.h2
+                          className="text-5xl font-black text-white mb-3 leading-none"
+                          style={{ textShadow: `0 0 80px ${activeTemplate.color}66` }}
+                          animate={{ opacity: [0.85, 1, 0.85] }}
+                          transition={{ duration: 3, repeat: Infinity }}
+                        >
+                          {activeTemplate.category}
+                        </motion.h2>
+                        <p className="text-white/45 text-sm max-w-xs mx-auto mb-5">{activeTemplate.desc}</p>
+                        <div className="flex gap-2 justify-center flex-wrap">
+                          {activeTemplate.tags.map(tag => (
+                            <Badge
+                              key={tag}
+                              className="text-[10px] border"
+                              style={{
+                                backgroundColor: activeTemplate.color + "20",
+                                borderColor: activeTemplate.color + "40",
+                                color: activeTemplate.color,
+                              }}
+                            >
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="done"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="text-center pointer-events-auto"
+                  >
+                    <motion.div
+                      className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-5"
+                      style={{
+                        backgroundColor: activeTemplate.sceneColors[0] + "22",
+                        border: `1px solid ${activeTemplate.sceneColors[0]}44`,
+                      }}
+                      animate={{
+                        boxShadow: [
+                          `0 0 20px ${activeTemplate.sceneColors[0]}44`,
+                          `0 0 60px ${activeTemplate.sceneColors[0]}77`,
+                          `0 0 20px ${activeTemplate.sceneColors[0]}44`,
+                        ],
+                      }}
+                      transition={{ duration: 2.5, repeat: Infinity }}
+                    >
+                      <Check className="w-9 h-9" style={{ color: activeTemplate.sceneColors[0] }} />
+                    </motion.div>
+                    <h3 className="text-4xl font-black text-white mb-2">
+                      {generatedBusinessName || currentSchema?.meta?.title || activeTemplate.name} is live
+                    </h3>
+                    <p className="text-white/45 text-sm mb-6 max-w-sm mx-auto">
+                      WebGL scene active · AI sections generated · Ready to publish
+                    </p>
+                    <div className="flex gap-2.5 justify-center">
+                      {currentSchema && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setPreviewSchema(true)}
+                          className="border-white/20 text-white/70 hover:text-white gap-1.5 h-9 px-4"
+                        >
+                          <Eye className="w-3.5 h-3.5" /> Full Preview
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        onClick={() => setPhase("build")}
+                        className="gap-1.5 h-9 px-4"
+                        style={{ backgroundColor: activeTemplate.sceneColors[0] }}
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" /> Edit Page
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="gap-1.5 h-9 px-4 bg-white text-black hover:bg-white/90"
+                      >
+                        Publish Now <ChevronRight className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {/* Exit preview */}
+          {previewSchema && (
+            <div className="absolute top-4 right-4 z-20">
+              <Button
+                size="sm"
+                onClick={() => setPreviewSchema(false)}
+                className="bg-black/70 backdrop-blur-sm border border-white/20 text-white hover:bg-black/80 gap-1.5 text-xs h-8"
+              >
+                <X className="w-3 h-3" /> Exit Preview
+              </Button>
+            </div>
+          )}
+
+          {/* Status bar */}
           <div className="absolute bottom-4 left-4 flex items-center gap-2 pointer-events-none">
-            <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            <span className="text-white/40 text-xs">WebGL Active · Drag to explore · {TEMPLATES.length} templates</span>
+            <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+            <span className="text-white/30 text-[11px]">
+              {currentSchema
+                ? `${generatedBusinessName || "Page"} · WebGL active · ${currentSchema.meta.niche.replace(/_/g, " ")}`
+                : `WebGL live · ${activeTemplate.style} aesthetic · ${TEMPLATES.length} templates`
+              }
+            </span>
           </div>
-        </div>
+        </main>
       </div>
     </div>
   );

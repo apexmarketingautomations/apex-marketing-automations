@@ -1511,6 +1511,7 @@ export const digitalCards = pgTable("digital_cards", {
   saveContactCount: integer("save_contact_count").default(0),
   shareCount: integer("share_count").default(0),
   clickStats: jsonb("click_stats").$type<Record<string, number>>().default({}),
+  identityDna: jsonb("identity_dna"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -2307,6 +2308,7 @@ export const standaloneCards = pgTable("standalone_cards", {
   removeApexBranding: boolean("remove_apex_branding").default(false),
   premiumSupportFlag: boolean("premium_support_flag").default(false),
   published: boolean("published").default(false),
+  identityDna: jsonb("identity_dna"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -4146,3 +4148,24 @@ export type EnterpriseRolePermission  = typeof enterpriseRolePermissions.$inferS
 export type EnterpriseWhiteLabelConfig = typeof enterpriseWhiteLabelConfigs.$inferSelect;
 export type EnterpriseTenantQuota     = typeof enterpriseTenantQuotas.$inferSelect;
 export type EnterpriseRoiSnapshot     = typeof enterpriseRoiSnapshots.$inferSelect;
+
+// ── Dynamic Page Schemas ──────────────────────────────────────────────────────
+// Persists AI-generated landing page schemas per tenant account.
+export const dynamicPageSchemas = pgTable("dynamic_page_schemas", {
+  id:               serial("id").primaryKey(),
+  accountId:        integer("account_id").notNull(),
+  createdByUserId:  integer("created_by_user_id"),
+  slug:             text("slug").notNull().default(""),
+  title:            text("title").notNull().default("Untitled"),
+  niche:            text("niche").notNull().default("general"),
+  status:           text("status").notNull().default("draft"),
+  schemaJson:       jsonb("schema_json").notNull().$default(() => ({})),
+  publishedAt:      timestamp("published_at"),
+  createdAt:        timestamp("created_at").defaultNow().notNull(),
+  updatedAt:        timestamp("updated_at").defaultNow().notNull(),
+  version:          integer("version").notNull().default(1),
+  isPublic:         boolean("is_public").notNull().default(false),
+});
+
+export type DynamicPageSchema       = typeof dynamicPageSchemas.$inferSelect;
+export type InsertDynamicPageSchema = typeof dynamicPageSchemas.$inferInsert;

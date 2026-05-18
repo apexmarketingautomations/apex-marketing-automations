@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { db } from "./db";
 import { subscriptions, usageLogs, PLAN_LIMITS } from "@shared/schema";
 import { eq, and, gte, sql } from "drizzle-orm";
+import { canBypassBilling, canBypassPlanLimits, logAuthBypass } from "./auth/authorization";
 
 type SubStatus = "active" | "trialing" | "past_due" | "canceled" | "incomplete" | "suspended" | "unpaid";
 
@@ -10,21 +11,14 @@ const LIMITED_ACCESS: SubStatus[] = ["past_due"];
 
 export function requireActiveSubscription() {
   return async (req: Request, res: Response, next: NextFunction) => {
-    const adminSecret = process.env.STANDALONE_ADMIN_SECRET;
-    const headerSecret = req.headers["x-admin-secret"] as string | undefined;
-    if (headerSecret) {
-      console.log(`[SUB-GUARD] Admin secret check: envSet=${!!adminSecret}, envLen=${adminSecret?.length}, headerLen=${headerSecret?.length}, match=${adminSecret === headerSecret}`);
-    }
-    if (adminSecret && headerSecret && headerSecret.trim() === adminSecret.trim()) {
+    if (canBypassBilling(req)) {
+      logAuthBypass(req, "requireActiveSubscription");
       return next();
     }
 
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
-
-    const userId = user.claims?.sub || user.id;
-    const adminUserId = process.env.ADMIN_USER_ID;
-    if (adminUserId && userId === adminUserId) return next();
+    const userId = user.claims?.sub ?? user.id;
 
     try {
       const [sub] = await db
@@ -67,18 +61,13 @@ export function requireActiveSubscription() {
 
 export function checkPlanLimitMiddleware(metricType: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
-    const adminSecret = process.env.STANDALONE_ADMIN_SECRET;
-    const headerSecret = req.headers["x-admin-secret"] as string | undefined;
-    if (adminSecret && headerSecret && headerSecret === adminSecret) {
+    if (canBypassPlanLimits(req)) {
+      logAuthBypass(req, `checkPlanLimitMiddleware:${metricType}`);
       return next();
     }
 
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
-
-    const userId = user.claims?.sub || user.id;
-    const adminUserId = process.env.ADMIN_USER_ID;
-    if (adminUserId && userId === adminUserId) return next();
 
     const subAccountId = Number(req.params.subAccountId || req.body?.subAccountId);
     if (!subAccountId || isNaN(subAccountId)) {

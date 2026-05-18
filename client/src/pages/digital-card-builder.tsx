@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useActiveSubAccountId } from "@/components/account-required";
@@ -21,6 +21,9 @@ import {
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { BuilderPreview } from "@/components/card-core";
+import { IdentityPromptPanel } from "@/components/card-identity/IdentityPromptPanel";
+import { WebGLIdentityScene } from "@/components/card-identity/WebGLIdentityScene";
+import type { IdentityVisualDNA } from "@/lib/card-identity/schema";
 
 interface ServiceItem {
   label: string;
@@ -72,6 +75,7 @@ interface CardConfig {
   viewCount: number;
   saveContactCount: number;
   shareCount: number;
+  identityDna?: IdentityVisualDNA | null;
 }
 
 const THEMES = [
@@ -606,6 +610,7 @@ function DigitalCardBuilderInner() {
   const [showPreview, setShowPreview] = useState(false);
   const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("mobile");
   const [activeSection, setActiveSection] = useState("info");
+  const [identityDna, setIdentityDna] = useState<IdentityVisualDNA | null>(null);
 
   const { data: cardConfig, isLoading } = useQuery<CardConfig>({
     queryKey: ["/api/digital-card", subAccountId],
@@ -619,6 +624,13 @@ function DigitalCardBuilderInner() {
 
   const [form, setForm] = useState<CardConfig | null>(null);
   const config = form || cardConfig || DEFAULT_CARD;
+
+  // Initialize identityDna from server card once loaded
+  useEffect(() => {
+    if (cardConfig?.identityDna && !identityDna) {
+      setIdentityDna(cardConfig.identityDna);
+    }
+  }, [cardConfig?.identityDna]);
 
   const saveMutation = useMutation({
     mutationFn: async (data: CardConfig) => {
@@ -634,6 +646,23 @@ function DigitalCardBuilderInner() {
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const applyIdentityMutation = useMutation({
+    mutationFn: async (dna: IdentityVisualDNA) => {
+      const cardId = (cardConfig ?? config).id;
+      if (!cardId) throw new Error("Save the card first before applying an identity.");
+      await apiRequest("PATCH", `/api/card-identity/${cardId}/apply`, { dna, subAccountId });
+      return dna;
+    },
+    onSuccess: (dna) => {
+      setIdentityDna(dna);
+      toast({ title: "Identity Applied ✓", description: "Your cinematic identity is live." });
+      queryClient.invalidateQueries({ queryKey: ["/api/digital-card", subAccountId] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Identity Error", description: err.message, variant: "destructive" });
     },
   });
 
@@ -1004,6 +1033,54 @@ function DigitalCardBuilderInner() {
           )}
 
           {activeSection === "theme" && (
+            <>
+            {/* AI Identity section at top of theme tab */}
+            <Card className="bg-black/40 border-indigo-500/20">
+              <CardContent className="p-6 space-y-4">
+                <IdentityPromptPanel
+                  currentDna={identityDna}
+                  onDnaUpdate={(dna) => {
+                    setIdentityDna(dna);
+                    applyIdentityMutation.mutate(dna);
+                  }}
+                  onContentGenerated={(content) => {
+                    setForm({
+                      ...config,
+                      bio: content.bio || config.bio,
+                      tagline: content.tagline || config.tagline,
+                      services: content.services?.length ? content.services : config.services,
+                      testimonial: content.testimonial ?? config.testimonial,
+                    });
+                    toast({ title: "Content Generated ✓", description: "Bio, tagline, services & testimonial auto-filled." });
+                  }}
+                  profileContext={{
+                    name: config.name,
+                    title: config.title,
+                    company: config.company,
+                    bio: config.bio,
+                    imageUrl: config.photoUrl,
+                  }}
+                  isAdmin={false}
+                />
+
+                {/* Live mini-preview when DNA is set */}
+                {identityDna && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-wider">Live Preview</span>
+                      <span className="text-[10px] bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full">AI Identity Active</span>
+                    </div>
+                    <div className="rounded-xl overflow-hidden border border-white/10">
+                      <Suspense fallback={<div className="h-[150px] bg-slate-900 animate-pulse" />}>
+                        <WebGLIdentityScene dna={identityDna} height="150px" />
+                      </Suspense>
+                    </div>
+                    <p className="text-[10px] text-slate-500">Style: {identityDna.identityStyle} · {identityDna.niche}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
             <Card className="bg-black/40 border-white/10">
               <CardContent className="p-6 space-y-4">
                 <h2 className="text-lg font-bold text-white">Theme</h2>
@@ -1039,6 +1116,7 @@ function DigitalCardBuilderInner() {
                 </div>
               </CardContent>
             </Card>
+            </>
           )}
 
           {activeSection === "seo" && (

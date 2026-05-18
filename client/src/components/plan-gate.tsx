@@ -75,8 +75,11 @@ export function PlanGate({ feature, children, featureLabel }: PlanGateProps) {
 }
 
 export function useAccountPlan(): string {
+  const { user } = useAuth();
+  const isAdmin = user?.isAdmin === "true" || (user as any)?.role === "DEV_ADMIN";
   const activeId = useActiveSubAccountId();
   const { data: accounts = [] } = useQuery<SubAccount[]>({ queryKey: ["/api/accounts"] });
   const currentAccount = activeId ? accounts.find(a => a.id === activeId) : null;
+  if (isAdmin) return "enterprise";
   return currentAccount?.plan || "starter";
 }

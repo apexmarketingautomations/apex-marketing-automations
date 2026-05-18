@@ -166,8 +166,9 @@ function PropertyIntelligencePanel() {
   });
 
   if (isLoading) return <div className="text-gray-400 text-sm animate-pulse">Loading property intelligence...</div>;
+  if (!stats) return <div className="text-gray-500 text-sm text-center py-8">Property intelligence unavailable — admin access required or no data yet.</div>;
 
-  const s = stats!;
+  const s = stats;
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

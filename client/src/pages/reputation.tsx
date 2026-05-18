@@ -9,8 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-
-const SUB_ACCOUNT_ID = 1;
+import { useAccount } from "@/hooks/use-account";
 
 function StarDisplay({ rating, size = 16 }: { rating: number; size?: number }) {
   return (
@@ -30,24 +29,30 @@ export default function Reputation() {
   const { showTutorial, startTutorial, closeTutorial } = useTutorial("apex_tutorial_reputation");
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { activeAccountId } = useAccount();
   const [googleLink, setGoogleLink] = useState("");
   const [trustpilotLink, setTrustpilotLink] = useState("");
   const [linksLoaded, setLinksLoaded] = useState(false);
   const [generatingAi, setGeneratingAi] = useState<number | null>(null);
 
+  // Guard: do not fetch any data until we know which account we're on.
+  const accountReady = !!activeAccountId;
+
   const { data: reviews = [], isLoading } = useQuery<any[]>({
-    queryKey: ["/api/reviews", SUB_ACCOUNT_ID],
+    queryKey: ["/api/reviews", activeAccountId],
+    enabled: accountReady,
     queryFn: async () => {
-      const res = await fetch(`/api/reviews/${SUB_ACCOUNT_ID}`);
+      const res = await fetch(`/api/reviews/${activeAccountId}`);
       if (!res.ok) throw new Error("Failed to fetch reviews");
       return res.json();
     },
   });
 
   const { data: config } = useQuery<{ googleReviewLink: string; trustpilotLink: string; name: string }>({
-    queryKey: ["/api/review-config", SUB_ACCOUNT_ID],
+    queryKey: ["/api/review-config", activeAccountId],
+    enabled: accountReady,
     queryFn: async () => {
-      const res = await fetch(`/api/review-config/${SUB_ACCOUNT_ID}`);
+      const res = await fetch(`/api/review-config/${activeAccountId}`);
       if (!res.ok) throw new Error("Failed to fetch config");
       return res.json();
     },
@@ -62,7 +67,8 @@ export default function Reputation() {
 
   const saveConfigMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/review-config/${SUB_ACCOUNT_ID}`, {
+      if (!activeAccountId) throw new Error("No active account");
+      const res = await fetch(`/api/review-config/${activeAccountId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ googleReviewLink: googleLink, trustpilotLink }),
@@ -72,7 +78,10 @@ export default function Reputation() {
     },
     onSuccess: () => {
       toast({ title: "Saved", description: "Review links updated." });
-      queryClient.invalidateQueries({ queryKey: ["/api/review-config", SUB_ACCOUNT_ID] });
+      queryClient.invalidateQueries({ queryKey: ["/api/review-config", activeAccountId] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Save failed", description: err.message || "Could not save review links.", variant: "destructive" });
     },
   });
 
@@ -87,7 +96,7 @@ export default function Reputation() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/reviews", SUB_ACCOUNT_ID] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reviews", activeAccountId] });
     },
   });
 
@@ -120,7 +129,7 @@ export default function Reputation() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ aiResponse: aiText }),
       });
-      queryClient.invalidateQueries({ queryKey: ["/api/reviews", SUB_ACCOUNT_ID] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reviews", activeAccountId] });
       toast({ title: "AI Response Generated", description: "Response has been saved to the review." });
     } catch {
       toast({ title: "Error", description: "Failed to generate AI response.", variant: "destructive" });
@@ -134,12 +143,26 @@ export default function Reputation() {
   const positiveCount = reviews.filter((r: any) => r.rating >= 4).length;
   const negativeCount = reviews.filter((r: any) => r.rating <= 3).length;
 
-  const reviewLink = `${window.location.origin}/review/${SUB_ACCOUNT_ID}`;
+  const reviewLink = activeAccountId ? `${window.location.origin}/review/${activeAccountId}` : "";
 
   const copyLink = () => {
     navigator.clipboard.writeText(reviewLink);
     toast({ title: "Copied!", description: "Review link copied to clipboard." });
   };
+
+  // No account context — don't render reputation data for a wrong account
+  if (!accountReady) {
+    return (
+      <div className="flex-1 p-6 md:p-10 overflow-y-auto">
+        <div className="max-w-5xl mx-auto flex items-center justify-center py-40">
+          <div className="text-center">
+            <Star size={48} className="mx-auto mb-4 text-white/10" />
+            <p className="text-slate-400 text-sm">Loading your account…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 p-6 md:p-10 overflow-y-auto">

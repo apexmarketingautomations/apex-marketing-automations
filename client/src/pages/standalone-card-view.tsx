@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRoute, useLocation } from "wouter";
 import { AnimatePresence, motion } from "framer-motion";
+import { CinematicCardHero } from "@/components/card-identity/CinematicCardHero";
 import {
   CardLoading, CardNotFound, CardError,
   HeroSection, PrimaryActions, SaveShareBar, QRPanel,
@@ -170,7 +171,16 @@ export default function StandaloneCardView() {
 
       <div className="relative z-10">
         <div className="max-w-md mx-auto">
-          <HeroSection card={card} theme={theme} />
+          {rawCard.identityDna ? (
+            <Suspense fallback={<HeroSection card={card} theme={theme} />}>
+              <CinematicCardHero
+                dna={rawCard.identityDna}
+                photoUrl={card.photoUrl}
+              />
+            </Suspense>
+          ) : (
+            <HeroSection card={card} theme={theme} />
+          )}
 
           <div className="px-5 pb-40 -mt-2">
             <AboutSection card={card} theme={theme} />

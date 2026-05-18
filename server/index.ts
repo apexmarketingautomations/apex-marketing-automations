@@ -512,7 +512,16 @@ function validateEnvVars() {
   console.log("[STARTUP] Apex Marketing Automations — Environment Check");
   console.log("=".repeat(60));
 
+  // P1 security check: STANDALONE_ADMIN_SECRET must be set in production.
+  const isProd = process.env.NODE_ENV === "production";
+  if (isProd && !process.env.STANDALONE_ADMIN_SECRET?.trim()) {
+    console.error("[STARTUP] [SECURITY] STANDALONE_ADMIN_SECRET is not set in production. Internal admin routes will return 503. Set this env var in Railway immediately.");
+    // Do not throw — log loudly but keep the app running so other services stay up.
+  }
+  console.log(`[STARTUP] [SECURITY] STANDALONE_ADMIN_SECRET present=${!!process.env.STANDALONE_ADMIN_SECRET?.trim()}`);
+
   const checks: { key: string; altKey?: string; label: string; critical: boolean }[] = [
+    { key: "STANDALONE_ADMIN_SECRET", label: "Admin Secret (internal route auth — REQUIRED in production)", critical: isProd },
     { key: "VAPI_PRIVATE_KEY_APEX", altKey: "VAPI_PRIVATE_KEY", label: "Vapi Private Key (server-side API calls)", critical: true },
     { key: "VAPI_PUBLIC_KEY", altKey: "apex_public_vapi", label: "Vapi Public Key (browser demo calls)", critical: false },
     { key: "VAPI_ORG_ID", label: "Vapi Organization ID", critical: false },

@@ -3,7 +3,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { workflows, messages, pipelineStages } from "@shared/schema";
 import { eq, and, gte, desc, sql } from "drizzle-orm";
-import { asyncHandler, verifyAccountOwnership } from "./helpers";
+import { asyncHandler, verifyAccountOwnership, parseIntParam } from "./helpers";
 
 export type AccountPhase = "not_setup" | "setup_inactive" | "active_measurable";
 
@@ -172,7 +172,8 @@ export async function computeAccountReadiness(subAccountId: number): Promise<Acc
 
 export function registerReadinessRoutes(app: Express) {
   app.get("/api/readiness/:subAccountId", asyncHandler(async (req: Request, res: Response) => {
-    const subAccountId = Number(req.params.subAccountId);
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (subAccountId === null) return res.status(400).json({ error: "invalid subAccountId" });
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
 
     const readiness = await computeAccountReadiness(subAccountId);

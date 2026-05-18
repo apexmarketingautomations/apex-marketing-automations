@@ -16,7 +16,7 @@ import {
   alertExpiryStatus,
 } from "../sentinel-home-svc";
 import type { HomeSvcSignal, HomeSvcConfigShape } from "../sentinel-home-svc";
-import { asyncHandler, parseIntParam, verifyAccountOwnership, requirePlanFeature } from "./helpers";
+import { asyncHandler, parseIntParam, verifyAccountOwnership, requirePlanFeature, requireAdmin } from "./helpers";
 import { emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
 
 // --- Zod schema for CAD ingestion payload ---
@@ -841,7 +841,8 @@ export function registerSentinelRoutes(app: Express) {
   app.get("/api/sentinel/live", asyncHandler(async (req, res) => {
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });
-    const subAccountId = parseInt(req.query.subAccountId as string) || 1;
+    const subAccountId = parseIntParam(req.query.subAccountId as string, "subAccountId");
+    if (subAccountId === null) return res.status(400).json({ error: "subAccountId required" });
     if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
     const incidents = await storage.getSentinelIncidents(subAccountId);
     const liveFormat = incidents.slice(0, 20).map(inc => ({
@@ -973,7 +974,7 @@ export function registerSentinelRoutes(app: Express) {
 
   // ── Attorney Leads API ──────────────────────────────────────────────────────
 
-  app.get("/api/legal/attorneys", asyncHandler(async (req, res) => {
+  app.get("/api/legal/attorneys", requireAdmin, asyncHandler(async (req, res) => {
     const { db } = await import("../db");
     const { legalAttorneys } = await import("@shared/schema");
     const { desc, sql, ilike } = await import("drizzle-orm");
@@ -996,7 +997,7 @@ export function registerSentinelRoutes(app: Express) {
     res.json({ attorneys, total: attorneys.length });
   }));
 
-  app.post("/api/legal/attorneys/scrape", asyncHandler(async (req, res) => {
+  app.post("/api/legal/attorneys/scrape", requireAdmin, asyncHandler(async (req, res) => {
     const { runFullAttorneyScrape } = await import("../apifyAttorneyScraper");
     // Fire and forget — scrape runs in background
     runFullAttorneyScrape().catch(err =>
@@ -1083,7 +1084,8 @@ export function registerRetroSkipTraceRoute(app: any) {
       } else {
         const { authStorage } = await import("../replit_integrations/auth/storage");
         const dbUser = await authStorage.getUser(userId);
-        adminOk = dbUser?.isAdmin === "true";
+        const { isAdminFlag } = await import("../auth/authorization");
+        adminOk = isAdminFlag(dbUser?.isAdmin);
       }
     }
     if (!adminOk) return res.status(403).json({ error: "admin only" });
@@ -1097,6 +1099,22 @@ export function registerRetroSkipTraceRoute(app: any) {
 
     const { skipTraceLookup } = await import("../skip-trace");
     const result = await skipTraceLookup({ address, city, state, zip, ownerName }, apiKey);
+
+    // Log to execution timeline so admin-triggered skip traces appear in the timeline UI
+    try {
+      emitWithTimeline(
+        {
+          eventType: EVENT_TYPES.SKIP_TRACE_COMPLETED,
+          sourceModule: "manual-skip-trace",
+          sourceTable: "contacts",
+          sourceRecordId: address,
+          subAccountId: 0,
+          metadata: { triggeredBy: userId, address, city, state, zip, ownerName, resultPhone: result.ownerPhone ?? null, totalPersonsFound: result.totalPersonsFound, source: "manual_admin" },
+        },
+        "Manual Skip Trace (Admin)",
+        `Admin-triggered skip trace for ${ownerName || address} → ${result.ownerPhone ?? "no phone found"}`
+      );
+    } catch (_logErr) { /* allow-silent-catch: timeline logging must not block the response */ }
 
     res.json({
       ok: true,
@@ -1115,7 +1133,8 @@ export function registerRetroSkipTraceRoute(app: any) {
     try {
       // Admin-only: check session user OR legacy x-admin-secret header
       const user = req.user as any;
-      const headerOk = req.headers["x-admin-secret"] === (process.env.STANDALONE_ADMIN_SECRET || "201120062017");
+      const _envSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      const headerOk = !!_envSecret && req.headers["x-admin-secret"] === _envSecret;
       let sessionAdmin = false;
       if (user) {
         const userId: string = user.claims?.sub || user.id;
@@ -1125,7 +1144,8 @@ export function registerRetroSkipTraceRoute(app: any) {
         } else {
           const { authStorage } = await import("../replit_integrations/auth/storage");
           const dbUser = await authStorage.getUser(userId);
-          sessionAdmin = dbUser?.isAdmin === "true";
+          const { isAdminFlag: _isAdminFlag } = await import("../auth/authorization");
+          sessionAdmin = _isAdminFlag(dbUser?.isAdmin);
         }
       }
       if (!sessionAdmin && !headerOk) return res.status(401).json({ error: "Admin access required" });
@@ -1153,7 +1173,8 @@ export function registerRetroSkipTraceRoute(app: any) {
 
   app.post("/api/internal/retro-flhsmv-enrich", async (req: any, res: any) => {
     try {
-      const adminSecret = (process.env.STANDALONE_ADMIN_SECRET || "201120062017").trim();
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured" });
       const headerVal   = ((req.headers["x-admin-secret"] as string) || "").trim();
       if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
 
@@ -1178,7 +1199,8 @@ export function registerRetroSkipTraceRoute(app: any) {
 
   app.get("/api/internal/pipeline-health", async (req: any, res: any) => {
     try {
-      const adminSecret = (process.env.STANDALONE_ADMIN_SECRET || "201120062017").trim();
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured" });
       const headerVal   = ((req.headers["x-admin-secret"] as string) || "").trim();
       if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
 
@@ -1435,7 +1457,7 @@ export function registerRetroSkipTraceRoute(app: any) {
   // Returns live status of all FL lead pipelines — useful for the Sentinel UI
   // status panel and for debugging why leads aren't appearing.
 
-  app.get("/api/sentinel/pipeline-status", asyncHandler(async (_req, res) => {
+  app.get("/api/sentinel/pipeline-status", requireAdmin, asyncHandler(async (_req, res) => {
     const nimbleConfigured         = !!(process.env.NIMBLE_API_KEY || process.env.NIMBLE_TOKEN);
     const apifyConfigured          = !!(process.env.APIFY_API_KEY || process.env.APIFY_TOKEN || process.env.APIFY_KEY);
     const batchDataConfigured      = !!(process.env.BATCHDATA_API_KEY || process.env.BATCH_DATA || process.env.BATCHDATA_KEY);
@@ -1605,7 +1627,8 @@ export function registerRetroSkipTraceRoute(app: any) {
   // ── GET /api/internal/ai-health ─────────────────────────────────────────────
   // Stage 5 AI Orchestration Layer health endpoint
   app.get("/api/internal/ai-health", asyncHandler(async (req: any, res: any) => {
-    const adminSecret = (process.env.STANDALONE_ADMIN_SECRET || "201120062017").trim();
+    const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+    if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured" });
     const headerVal   = (req.headers["x-admin-secret"] as string | undefined ?? "").trim();
     if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
 
