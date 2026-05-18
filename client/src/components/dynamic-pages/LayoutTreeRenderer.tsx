@@ -254,7 +254,7 @@ function LayoutNodeView({ node, ctx }: { node: LayoutNode; ctx: RenderCtx }): Re
     // ── text / heading ──────────────────────────────────────────────────────
     case "heading": {
       const level = node.content?.headingLevel ?? 2;
-      const Tag = (`h${level}` as keyof React.JSX.IntrinsicElements);
+      const Tag = `h${level}` as React.ElementType;
       const tCss = typographyCss(ds, node.content?.typographyRole ?? "h2", true);
       const colorKey = node.content?.colorToken;
       const gradient = node.content?.gradientText;
