@@ -686,6 +686,22 @@ async function validateMetaCredentials() {
   }
 
   try {
+    const { startDolSafetyPipeline } = await import("./dolSafetyPipeline");
+    startDolSafetyPipeline();
+    console.log("[STARTUP] ✅ DOL Safety Intelligence pipeline started — OSHA accidents/inspections, MSHA violations → legal + insurance leads");
+  } catch (dolErr: any) {
+    console.error("[STARTUP] DOL Safety pipeline failed (non-fatal):", dolErr?.message);
+  }
+
+  try {
+    const { startApifyLeadScrapers } = await import("./apifyLeadScrapers");
+    startApifyLeadScrapers();
+    console.log("[STARTUP] ✅ Apify lead scrapers started — Google Maps (12h) + Zillow (24h)");
+  } catch (apifyErr: any) {
+    console.error("[STARTUP] Apify lead scrapers failed (non-fatal):", apifyErr?.message);
+  }
+
+  try {
     const { startCaseIntelligence } = await import("./caseIntelligence");
     startCaseIntelligence();
     console.log("[STARTUP] ✅ Case Intelligence Engine started — entity resolution + case grouping");
