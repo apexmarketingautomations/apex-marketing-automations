@@ -21,6 +21,8 @@ import { PromptDesignPanel } from "@/components/dynamic-pages/PromptDesignPanel"
 import { DynamicPageRenderer } from "@/components/dynamic-pages/DynamicPageRenderer";
 import type { DynamicPageSchema } from "@/lib/dynamic-pages/schema";
 import { useAuth } from "@/hooks/use-auth";
+import { useActiveSubAccountId } from "@/components/account-required";
+import { apiRequest } from "@/lib/queryClient";
 import {
   Sparkles, Globe, Layers, Zap, Plus, Eye, Download, Share2,
   LayoutTemplate, ArrowRight, Search, ChevronDown, X,
@@ -360,6 +362,7 @@ function TemplateCard({ template, selected, onSelect }: { template: TemplateItem
 export default function DynamicPages() {
   const { user } = useAuth();
   const isAdmin = user?.isAdmin === "true" || (user as any)?.role === "DEV_ADMIN";
+  const subAccountId = useActiveSubAccountId();
 
   const [selectedTemplate, setSelectedTemplate] = useState(TEMPLATES[0].id);
   const [tab, setTab] = useState<"templates" | "builder">("templates");
@@ -389,10 +392,22 @@ export default function DynamicPages() {
 
   const handleGenerate = async () => {
     setIsGenerating(true);
-    await new Promise(r => setTimeout(r, 2800));
-    setIsGenerating(false);
-    setGenerated(true);
-    setTab("builder");
+    try {
+      const prompt = `${activeTemplate.name}: ${activeTemplate.desc}. Tags: ${activeTemplate.tags.join(", ")}.`;
+      const res = await apiRequest("POST", "/api/dynamic-pages/generate", { prompt, subAccountId });
+      const data = await res.json();
+      if (data?.schema) {
+        setCurrentSchema(data.schema);
+        setGenerated(true);
+        setTab("builder");
+      }
+    } catch {
+      // fall through — builder tab still opens so user can refine via PromptDesignPanel
+      setGenerated(true);
+      setTab("builder");
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
@@ -522,6 +537,7 @@ export default function DynamicPages() {
                 currentSchema={currentSchema}
                 onSchemaUpdate={handleSchemaUpdate}
                 isAdmin={isAdmin}
+                subAccountId={subAccountId ?? undefined}
               />
 
               <div className="border-t border-white/5 pt-3">
