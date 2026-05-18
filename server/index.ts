@@ -686,6 +686,14 @@ async function validateMetaCredentials() {
   }
 
   try {
+    const { startDolSafetyPipeline } = await import("./dolSafetyPipeline");
+    startDolSafetyPipeline();
+    console.log("[STARTUP] ✅ DOL Safety Intelligence pipeline started — OSHA accidents/inspections, MSHA violations → legal + insurance leads");
+  } catch (dolErr: any) {
+    console.error("[STARTUP] DOL Safety pipeline failed (non-fatal):", dolErr?.message);
+  }
+
+  try {
     const { startCaseIntelligence } = await import("./caseIntelligence");
     startCaseIntelligence();
     console.log("[STARTUP] ✅ Case Intelligence Engine started — entity resolution + case grouping");

@@ -31,6 +31,7 @@ export function runStartupChecks() {
   check("Apify Scraper", ["APIFY_API_KEY"], false);
   check("BatchData Skip Trace", ["BATCHDATA_API_KEY", "BATCHDATA_KEY", "BATCH_DATA"], false);
   check("ScrapingBee (FLHSMV)", ["SCRAPINGBEE_API_KEY"], false);
+  check("DOL Safety Intelligence (OSHA/MSHA)", ["DOL_API_KEY"], false);
   check("Nimble Pipeline API", ["NIMBLE_API_USERNAME"], false);
   check("Google API", ["GOOGLE_API_KEY", "GOOGLE_MAPS_API_KEY"], false);
   check("CourtListener (bankruptcy leads)", ["COURTLISTENER_API_TOKEN"], false);
