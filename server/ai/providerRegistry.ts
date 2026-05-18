@@ -172,18 +172,7 @@ const MODEL_CATALOGUE: ModelProfile[] = [
     qualityTier:   3,
   },
   // ── Groq (free inference — LPU) ───────────────────────────────────────────
-  {
-    modelId:       "llama-3.3-70b-versatile",
-    name:          "Llama 3.3 70B (Groq)",
-    provider:      "groq",
-    contextWindow: 131_072,
-    maxOutputTokens: 32_768,
-    capabilities:  ["structured-json", "function-calling", "streaming", "low-cost", "low-latency"],
-    cost:          { inputPer1kTokens: 0, outputPer1kTokens: 0 }, // free tier
-    p50LatencyMs:  150,
-    p99LatencyMs:  800,
-    qualityTier:   2,
-  },
+  // FAST: lead classification, quick scoring
   {
     modelId:       "llama-3.1-8b-instant",
     name:          "Llama 3.1 8B Instant (Groq)",
@@ -195,6 +184,32 @@ const MODEL_CATALOGUE: ModelProfile[] = [
     p50LatencyMs:  80,
     p99LatencyMs:  400,
     qualityTier:   3,
+  },
+  // SMART: case analysis, summarization, complex classification
+  {
+    modelId:       "llama-3.3-70b-versatile",
+    name:          "Llama 3.3 70B (Groq)",
+    provider:      "groq",
+    contextWindow: 131_072,
+    maxOutputTokens: 32_768,
+    capabilities:  ["structured-json", "function-calling", "streaming", "low-cost", "low-latency"],
+    cost:          { inputPer1kTokens: 0, outputPer1kTokens: 0 },
+    p50LatencyMs:  150,
+    p99LatencyMs:  800,
+    qualityTier:   2,
+  },
+  // REASONING: deep reasoning, multi-step legal/insurance analysis
+  {
+    modelId:       "openai/gpt-oss-120b",
+    name:          "GPT OSS 120B Reasoning (Groq)",
+    provider:      "groq",
+    contextWindow: 131_072,
+    maxOutputTokens: 32_768,
+    capabilities:  ["structured-json", "function-calling", "streaming", "low-cost", "reasoning"],
+    cost:          { inputPer1kTokens: 0, outputPer1kTokens: 0 },
+    p50LatencyMs:  400,
+    p99LatencyMs:  2_000,
+    qualityTier:   1,
   },
   // ── Ollama (local) ─────────────────────────────────────────────────────────
   {
