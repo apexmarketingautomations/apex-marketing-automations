@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
 import { SplashScreen } from "@/components/splash-screen";
 import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import { initVibe } from "@/components/vibe-switcher";
 import { useAuth } from "@/hooks/use-auth";
 import { AccountProvider } from "@/hooks/use-account";
@@ -139,8 +140,39 @@ const MarketersFunnel = lazy(() => import("@/pages/marketers-funnel"));
 
 function PageLoader() {
   return (
-    <div className="h-screen w-full flex items-center justify-center bg-neutral-950">
-      <Spinner className="size-8 text-cyan-500" />
+    <div className="h-screen w-full flex bg-neutral-950">
+      {/* Sidebar skeleton */}
+      <div className="hidden md:flex flex-col w-56 shrink-0 border-r border-white/5 p-4 gap-3">
+        <Skeleton className="h-10 w-full rounded-lg mb-2 bg-white/5" />
+        {[...Array(6)].map((_, i) => (
+          <Skeleton key={i} className="h-8 w-full rounded-md bg-white/5" />
+        ))}
+        <div className="mt-4 border-t border-white/5 pt-4 flex flex-col gap-2">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} className="h-8 w-full rounded-md bg-white/5" />
+          ))}
+        </div>
+      </div>
+      {/* Main content skeleton */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top bar */}
+        <div className="h-14 border-b border-white/5 px-6 flex items-center gap-3">
+          <Skeleton className="h-8 w-48 rounded-md bg-white/5" />
+          <div className="ml-auto flex gap-2">
+            <Skeleton className="h-8 w-8 rounded-full bg-white/5" />
+            <Skeleton className="h-8 w-8 rounded-full bg-white/5" />
+          </div>
+        </div>
+        {/* Page body */}
+        <div className="flex-1 p-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+          <Skeleton className="h-32 rounded-xl bg-white/5 col-span-1" />
+          <Skeleton className="h-32 rounded-xl bg-white/5 col-span-1" />
+          <Skeleton className="h-32 rounded-xl bg-white/5 col-span-1" />
+          <Skeleton className="h-64 rounded-xl bg-white/5 col-span-full" />
+          <Skeleton className="h-48 rounded-xl bg-white/5 col-span-1 md:col-span-2" />
+          <Skeleton className="h-48 rounded-xl bg-white/5 col-span-1" />
+        </div>
+      </div>
     </div>
   );
 }
