@@ -507,21 +507,34 @@ export default function DynamicPages() {
       // When user typed a prompt, send it directly — do NOT prepend template name.
       // Template is used only as seed when no prompt exists.
       let prompt: string;
+      // Template visual context (colors, style, motion) — always sent, even with custom prompts.
+      // This is HOW it looks. The user prompt controls WHAT it is.
+      const templateVisual = [
+        `Visual style: ${activeTemplate.style}`,
+        `Color palette: ${activeTemplate.sceneColors.filter(Boolean).join(", ")}`,
+        `Mood tags: ${activeTemplate.tags.join(", ")}`,
+      ].join(". ");
+
       if (userTyped) {
-        // Put focal object hint at front so AI knows the 3D centerpiece
+        // User prompt = source of truth for business type, content, 3D focal object.
+        // Template visual attributes still applied as the visual layer.
         const focalHint = promptIntent.focalObject
           ? `Primary 3D focal object: ${promptIntent.focalObject}. `
           : "";
-        prompt = `${focalHint}${userTyped}`;
+        // When prompt conflicts with template, don't include template visual style
+        // so the AI picks the correct niche aesthetic automatically.
+        const visualLayer = !promptIntent.conflict ? ` ${templateVisual}.` : "";
+        prompt = `${focalHint}${userTyped}.${visualLayer}`;
       } else {
-        // No user prompt — use selected template as seed
-        prompt = `${activeTemplate.name}: ${activeTemplate.desc}. Style tags: ${activeTemplate.tags.join(", ")}.`;
+        // No user prompt — template is full seed (content + visual)
+        prompt = `${activeTemplate.name}: ${activeTemplate.desc}. ${templateVisual}.`;
       }
 
       const res = await apiRequest("POST", "/api/dynamic-pages/generate", {
         prompt,
         subAccountId,
         imageUrl: uploadedImageUrl || undefined,
+        templateId: activeTemplate.id,
       });
       const data = await res.json();
       if (data?.schema) {
