@@ -25,7 +25,7 @@ import { useActiveSubAccountId } from "@/components/account-required";
 import { apiRequest } from "@/lib/queryClient";
 import {
   Sparkles, Globe, Layers, Zap, Plus, Eye, Download, Share2,
-  LayoutTemplate, ArrowRight, Search, ChevronDown, X,
+  LayoutTemplate, ArrowRight, Search, ChevronDown, X, ImagePlus,
   Scale, UtensilsCrossed, Stethoscope, Car, Shield, Activity,
   GraduationCap, ShoppingBag, PawPrint, Camera, Heart, Home,
   Dumbbell, Gem, Megaphone, Building2, Wrench, Scissors,
@@ -374,6 +374,26 @@ export default function DynamicPages() {
   const [currentSchema, setCurrentSchema] = useState<DynamicPageSchema | null>(null);
   const [previewSchema, setPreviewSchema] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
+  const [uploadedImageUrl, setUploadedImageUrl] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const uploadRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = useCallback(async (file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    setIsUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("files", file);
+      const res = await fetch("/api/media/upload", { method: "POST", body: fd, credentials: "include" });
+      const json = await res.json();
+      const url = json.uploaded?.[0]?.url ?? json.url ?? "";
+      if (url) setUploadedImageUrl(url);
+    } catch {
+      // silent — user can try again
+    } finally {
+      setIsUploading(false);
+    }
+  }, []);
 
   const activeTemplate = TEMPLATES.find(t => t.id === selectedTemplate) ?? TEMPLATES[0];
 
@@ -395,7 +415,7 @@ export default function DynamicPages() {
     try {
       const base = customPrompt.trim() || activeTemplate.desc;
       const prompt = `${activeTemplate.name}: ${base}. Style tags: ${activeTemplate.tags.join(", ")}.`;
-      const res = await apiRequest("POST", "/api/dynamic-pages/generate", { prompt, subAccountId });
+      const res = await apiRequest("POST", "/api/dynamic-pages/generate", { prompt, subAccountId, imageUrl: uploadedImageUrl || undefined });
       const data = await res.json();
       if (data?.schema) {
         setCurrentSchema(data.schema);
@@ -520,6 +540,39 @@ export default function DynamicPages() {
                     className="w-full bg-white/5 border border-white/10 rounded-xl pl-7 pr-3 py-2 text-white text-xs placeholder:text-white/30 outline-none focus:border-purple-500/50 resize-none leading-relaxed"
                   />
                 </div>
+                {/* Image upload zone */}
+                <input
+                  ref={uploadRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={e => e.target.files?.[0] && handleImageUpload(e.target.files[0])}
+                />
+                <div
+                  className="flex items-center gap-2 p-2.5 rounded-xl border border-dashed border-white/10 hover:border-purple-500/40 cursor-pointer transition-colors"
+                  onClick={() => uploadRef.current?.click()}
+                  onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleImageUpload(f); }}
+                  onDragOver={e => e.preventDefault()}
+                >
+                  {uploadedImageUrl ? (
+                    <>
+                      <img src={uploadedImageUrl} className="w-8 h-8 rounded object-cover shrink-0" alt="uploaded" />
+                      <span className="text-white/60 text-xs flex-1 truncate">Image attached</span>
+                      <button
+                        onClick={e => { e.stopPropagation(); setUploadedImageUrl(""); }}
+                        className="text-white/30 hover:text-white/60 text-base leading-none px-1"
+                      >×</button>
+                    </>
+                  ) : (
+                    <>
+                      <ImagePlus className="w-3.5 h-3.5 text-white/30 shrink-0" />
+                      <span className="text-white/30 text-xs">
+                        {isUploading ? "Uploading…" : "Add image — logo, photo, product"}
+                      </span>
+                    </>
+                  )}
+                </div>
+
                 <Button onClick={handleGenerate} disabled={isGenerating}
                   className="w-full bg-purple-600 hover:bg-purple-700 text-white text-sm h-9 gap-2">
                   {isGenerating ? (

@@ -14,7 +14,7 @@ import type { Express, Request, Response } from "express";
 import { db } from "../db";
 import { digitalCards, standaloneCards, cardAnalyticsSessions } from "../../shared/schema";
 import { eq } from "drizzle-orm";
-import { generateIdentityDNA, patchIdentityDNA } from "../services/aiPromptToIdentityDNA";
+import { generateIdentityDNA, patchIdentityDNA, generateCardContent } from "../services/aiPromptToIdentityDNA";
 import type { IdentityVisualDNA } from "../../client/src/lib/card-identity/schema";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -152,6 +152,23 @@ export function registerCardIdentityRoutes(app: Express): void {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       console.error("[IDENTITY] Standalone apply error:", msg);
+      return res.status(500).json({ error: msg });
+    }
+  });
+
+  // POST /api/card-identity/generate-content — generate card bio/tagline/services/testimonial from prompt
+  app.post("/api/card-identity/generate-content", async (req: Request, res: Response) => {
+    try {
+      const { prompt, name, title, company, niche, imageUrl } = req.body ?? {};
+      if (!prompt || typeof prompt !== "string") {
+        return res.status(400).json({ error: "prompt is required" });
+      }
+      const clean = sanitizePrompt(prompt);
+      const content = await generateCardContent(clean, { name, title, company, niche, imageUrl });
+      return res.json({ content });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      console.error("[IDENTITY] generate-content error:", msg);
       return res.status(500).json({ error: msg });
     }
   });

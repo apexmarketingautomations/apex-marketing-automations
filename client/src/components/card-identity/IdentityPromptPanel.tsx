@@ -34,20 +34,29 @@ const QUICK_CHIPS = [
 
 const MAX_UNDO = 15;
 
+export interface GeneratedCardContent {
+  bio: string;
+  tagline: string;
+  services: Array<{ label: string; description: string; icon: string; color: string }>;
+  testimonial: { quote: string; author: string; role: string } | null;
+}
+
 export interface IdentityPromptPanelProps {
   currentDna: IdentityVisualDNA | null;
   onDnaUpdate: (dna: IdentityVisualDNA) => void;
+  onContentGenerated?: (content: GeneratedCardContent) => void;
   profileContext?: {
     name?: string;
     title?: string;
     company?: string;
     bio?: string;
     niche?: string;
+    imageUrl?: string;
   };
   isAdmin?: boolean;
 }
 
-export function IdentityPromptPanel({ currentDna, onDnaUpdate, profileContext, isAdmin }: IdentityPromptPanelProps) {
+export function IdentityPromptPanel({ currentDna, onDnaUpdate, onContentGenerated, profileContext, isAdmin }: IdentityPromptPanelProps) {
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
@@ -94,14 +103,37 @@ export function IdentityPromptPanel({ currentDna, onDnaUpdate, profileContext, i
     setLoading(true);
     setStatus("idle");
     try {
-      const res = await fetch("/api/card-identity/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: clean, profileContext }),
-      });
-      if (!res.ok) throw new Error(`Server error ${res.status}`);
-      const { dna } = await res.json();
+      // Fire both DNA + content generation in parallel
+      const [dnaRes, contentRes] = await Promise.all([
+        fetch("/api/card-identity/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: clean, profileContext }),
+          credentials: "include",
+        }),
+        onContentGenerated ? fetch("/api/card-identity/generate-content", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: clean,
+            name: profileContext?.name,
+            title: profileContext?.title,
+            company: profileContext?.company,
+            niche: profileContext?.niche,
+            imageUrl: profileContext?.imageUrl,
+          }),
+          credentials: "include",
+        }) : Promise.resolve(null),
+      ]);
+
+      if (!dnaRes.ok) throw new Error(`Server error ${dnaRes.status}`);
+      const { dna } = await dnaRes.json();
       applyDna(dna);
+
+      if (contentRes?.ok && onContentGenerated) {
+        const { content } = await contentRes.json();
+        if (content) onContentGenerated(content as GeneratedCardContent);
+      }
     } catch (err: unknown) {
       setStatus("error");
       setStatusMsg(err instanceof Error ? err.message : "Generation failed");
@@ -109,7 +141,7 @@ export function IdentityPromptPanel({ currentDna, onDnaUpdate, profileContext, i
     } finally {
       setLoading(false);
     }
-  }, [profileContext, applyDna]);
+  }, [profileContext, applyDna, onContentGenerated]);
 
   const patch = useCallback(async (p: string) => {
     const clean = p.trim();

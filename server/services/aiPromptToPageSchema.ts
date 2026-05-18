@@ -180,9 +180,14 @@ function sanitizeHtml(html: string): string {
 async function generateSectionsHtml(
   prompt: string,
   schema: DynamicPageSchema,
-  intent: ReturnType<typeof parsePromptIntent>
+  intent: ReturnType<typeof parsePromptIntent>,
+  imageUrl?: string
 ): Promise<string> {
   const colors = schema.theme?.colors ?? {};
+  const imageContext = imageUrl
+    ? `\n- User uploaded image: ${imageUrl} — embed it prominently using <img src="${imageUrl}" class="..."> in the most appropriate section (hero backdrop, about section, product showcase, or profile photo).`
+    : "";
+
   const userMessage = `Generate HTML sections for this landing page prompt: "${prompt}"
 
 Business context:
@@ -192,7 +197,7 @@ Business context:
 - Headline (already shown in the 3D hero): "${schema.copy?.headline ?? ""}"
 - Subheadline: "${schema.copy?.subheadline ?? ""}"
 - Primary CTA: "${schema.cta?.primaryText ?? "Get Started"}"
-- Theme colors: primary=${colors.primary ?? "#6366f1"}, secondary=${colors.secondary ?? "#a855f7"}, accent=${colors.accent ?? "#06b6d4"}
+- Theme colors: primary=${colors.primary ?? "#6366f1"}, secondary=${colors.secondary ?? "#a855f7"}, accent=${colors.accent ?? "#06b6d4"}${imageContext}
 
 Generate compelling, niche-specific sections. The WebGL 3D hero is already above — start directly with features/services.`;
 
@@ -225,7 +230,7 @@ Generate compelling, niche-specific sections. The WebGL 3D hero is already above
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export async function generatePageSchema(prompt: string, subAccountId?: number): Promise<DynamicPageSchema> {
+export async function generatePageSchema(prompt: string, subAccountId?: number, imageUrl?: string): Promise<DynamicPageSchema> {
   const intent = parsePromptIntent(prompt);
   const id = randomId();
   const now = NOW();
@@ -279,7 +284,7 @@ Generate a compelling, on-brand page schema. Make the copy specific and persuasi
     if (parsed.publish) parsed.publish.published = false;
 
     // Now generate the AI HTML sections using the real schema copy + theme
-    const generatedHtml = await generateSectionsHtml(prompt, parsed, intent);
+    const generatedHtml = await generateSectionsHtml(prompt, parsed, intent, imageUrl);
     if (generatedHtml) {
       parsed.generatedHtml = generatedHtml;
     }

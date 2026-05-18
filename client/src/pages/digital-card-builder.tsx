@@ -1043,11 +1043,22 @@ function DigitalCardBuilderInner() {
                     setIdentityDna(dna);
                     applyIdentityMutation.mutate(dna);
                   }}
+                  onContentGenerated={(content) => {
+                    setForm({
+                      ...config,
+                      bio: content.bio || config.bio,
+                      tagline: content.tagline || config.tagline,
+                      services: content.services?.length ? content.services : config.services,
+                      testimonial: content.testimonial ?? config.testimonial,
+                    });
+                    toast({ title: "Content Generated ✓", description: "Bio, tagline, services & testimonial auto-filled." });
+                  }}
                   profileContext={{
                     name: config.name,
                     title: config.title,
                     company: config.company,
                     bio: config.bio,
+                    imageUrl: config.photoUrl,
                   }}
                   isAdmin={false}
                 />

@@ -382,3 +382,92 @@ Return the COMPLETE updated DNA as JSON.`;
     return existingDNA;
   }
 }
+
+// ── Card content generation ───────────────────────────────────────────────────
+
+export interface GeneratedCardContent {
+  bio: string;
+  tagline: string;
+  services: Array<{ label: string; description: string; icon: string; color: string }>;
+  testimonial: { quote: string; author: string; role: string } | null;
+}
+
+const SERVICE_COLORS = [
+  "linear-gradient(135deg,#6366f1,#4f46e5)",
+  "linear-gradient(135deg,#a855f7,#9333ea)",
+  "linear-gradient(135deg,#06b6d4,#0891b2)",
+  "linear-gradient(135deg,#10b981,#059669)",
+  "linear-gradient(135deg,#f59e0b,#d97706)",
+  "linear-gradient(135deg,#ef4444,#dc2626)",
+];
+
+export async function generateCardContent(
+  prompt: string,
+  context: { name?: string; title?: string; company?: string; niche?: string; imageUrl?: string }
+): Promise<GeneratedCardContent> {
+  const nameStr = context.name ? `Name: ${context.name}` : "";
+  const titleStr = context.title ? `Title: ${context.title}` : "";
+  const companyStr = context.company ? `Company: ${context.company}` : "";
+  const imageStr = context.imageUrl ? `Profile/brand image provided: ${context.imageUrl}` : "";
+
+  const systemPrompt = `You are an expert copywriter and business card content strategist.
+Generate compelling, niche-specific content for a digital business card.
+Return ONLY valid JSON — no markdown, no code blocks.
+JSON structure:
+{
+  "bio": string (2-3 sentences, first-person, specific to their niche, ~80 words),
+  "tagline": string (punchy 5-10 word tagline, niche-specific),
+  "services": [
+    { "label": string (2-3 words), "description": string (8-12 words), "icon": string (one of: home|hammer|wrench|zap|scale|shield|heart|stethoscope|car|camera|palette|sparkles|briefcase|leaf|scissors|trending|dollar|star|phone|mail), "color": string (pick from: red|orange|gold|green|teal|blue|purple|pink) }
+  ] (3-5 services, highly niche-specific),
+  "testimonial": { "quote": string (1-2 sentences, specific outcome, realistic), "author": string (first name + last initial), "role": string (their job/context) } or null
+}
+Rules:
+- Bio must NOT be generic. "Award-winning" is OK. Reference specific outcomes, locations, or niches.
+- Services must match exactly what this type of business does.
+- Testimonial quote must include a specific result (e.g. "sold in 4 days", "saved me $12k", "recovered in 6 weeks").
+- If niche is unclear, infer from the prompt.`;
+
+  const userMsg = `Generate card content for: "${prompt}"
+${nameStr} ${titleStr} ${companyStr} ${imageStr}`.trim();
+
+  try {
+    const response = await aiChat(
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMsg },
+      ],
+      { temperature: 0.85, maxTokens: 1200, jsonMode: true, timeoutMs: 20000 }
+    );
+
+    if (!response.ok || !response.text) throw new Error("AI returned empty response");
+
+    const raw = response.text.slice(response.text.indexOf("{"), response.text.lastIndexOf("}") + 1);
+    const parsed = JSON.parse(raw) as GeneratedCardContent;
+
+    // Assign gradient colors to services
+    if (Array.isArray(parsed.services)) {
+      parsed.services = parsed.services.slice(0, 5).map((svc, i) => ({
+        ...svc,
+        color: SERVICE_COLORS[i % SERVICE_COLORS.length],
+      }));
+    }
+
+    return parsed;
+  } catch (err) {
+    console.warn("[IDENTITY] generateCardContent failed:", err instanceof Error ? err.message : err);
+    // Minimal fallback
+    return {
+      bio: context.name
+        ? `${context.name} is a dedicated ${context.title ?? "professional"} committed to delivering exceptional results for every client.`
+        : "A dedicated professional committed to delivering exceptional results for every client.",
+      tagline: context.title ? `Expert ${context.title} Services` : "Professional. Trusted. Exceptional.",
+      services: [
+        { label: "Consultation", description: "Expert advice tailored to your needs", icon: "briefcase", color: SERVICE_COLORS[0] },
+        { label: "Full Service", description: "End-to-end professional support", icon: "star", color: SERVICE_COLORS[1] },
+        { label: "Follow-Up", description: "Ongoing support after every engagement", icon: "phone", color: SERVICE_COLORS[2] },
+      ],
+      testimonial: null,
+    };
+  }
+}
