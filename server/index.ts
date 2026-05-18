@@ -782,6 +782,14 @@ async function validateMetaCredentials() {
   }
   }
 
+  // Phase 11 — Enterprise Control Center startup
+  try {
+    const { seedSystemRoles } = await import("./enterprise/rbacPermissionSystem");
+    await seedSystemRoles();
+  } catch (enterpriseErr: any) {
+    console.error("[STARTUP] Enterprise RBAC seed failed (non-fatal):", enterpriseErr?.message);
+  }
+
   try {
     const { storage } = await import("./storage");
     initEventSubscribers(storage);
@@ -1812,6 +1820,25 @@ RULES:
 
   const { registerHomeServiceRoutes } = await import("./routes/homeService");
   registerHomeServiceRoutes(app);
+
+  const { registerHplAdminRoutes } = await import("./routes/hplAdmin");
+  registerHplAdminRoutes(app);
+
+  const { registerInsuranceAdminRoutes } = await import("./routes/insuranceAdmin");
+  registerInsuranceAdminRoutes(app);
+
+  const { registerServiceIndustryAdminRoutes } = await import("./routes/serviceIndustryAdmin");
+  registerServiceIndustryAdminRoutes(app);
+
+  const { registerCommunicationsAdminRoutes } = await import("./routes/communicationsAdmin");
+  registerCommunicationsAdminRoutes(app);
+
+  const { registerNewResidentAdminRoutes } = await import("./routes/newResidentAdmin");
+  registerNewResidentAdminRoutes(app);
+
+  const { registerEnterpriseAdminRoutes } = await import("./routes/enterpriseAdmin");
+  registerEnterpriseAdminRoutes(app);
+
 
   await setupAuth(app);
 

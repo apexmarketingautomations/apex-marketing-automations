@@ -530,8 +530,15 @@ async function runArrestEnrichmentPass(): Promise<void> {
 
 // ── GOOGLE PLACES ENRICHMENT — Get phone for company-based leads ──────────────
 
+// In-process cache: company+county → phone (or null). Entries expire after 24 h.
+const _placesCache = new Map<string, { phone: string | null; expiresAt: number }>();
+
 export async function findBusinessPhone(companyName: string, county: string): Promise<string | null> {
   if (!GOOGLE_PLACES_KEY || !companyName) return null;
+
+  const cacheKey = `${companyName.toLowerCase()}|${county}`;
+  const cached = _placesCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.phone;
 
   try {
     const countyObj = FL_COUNTIES.find(c => c.name === county);
@@ -539,8 +546,9 @@ export async function findBusinessPhone(companyName: string, county: string): Pr
     const query = encodeURIComponent(`${companyName} ${city} FL`);
     const url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input=${query}&inputtype=textquery&fields=formatted_phone_number,name&key=${GOOGLE_PLACES_KEY}`;
     const data = await safeFetch(url, 8000);
-    const candidate = data?.candidates?.[0];
-    return candidate?.formatted_phone_number || null;
+    const phone = data?.candidates?.[0]?.formatted_phone_number ?? null;
+    _placesCache.set(cacheKey, { phone, expiresAt: Date.now() + 86_400_000 });
+    return phone;
   } catch (_e) { // allow-silent-catch: network timeout returns null safely
     return null;
   }
