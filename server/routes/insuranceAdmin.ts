@@ -114,7 +114,7 @@ export function registerInsuranceAdminRoutes(app: Express): void {
 
   app.post("/api/insurance/process-storm/:eventId", async (req: Request, res: Response) => {
     if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
-    const { eventId } = req.params;
+    const eventId = String(req.params.eventId);
     try {
       // Fetch storm event from HPL table — use esc() to prevent injection
       const result = await db.execute(sql.raw(`
@@ -224,7 +224,7 @@ export function registerInsuranceAdminRoutes(app: Express): void {
   app.post("/api/insurance/correlate-property/:apexPropertyId", async (req: Request, res: Response) => {
     if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
     try {
-      const householdId = await correlateFromHPLProperty(req.params.apexPropertyId);
+      const householdId = await correlateFromHPLProperty(String(req.params.apexPropertyId));
       if (!householdId) return res.status(404).json({ error: "property_not_found" });
       return res.json({ householdId });
     } catch (err: any) {
@@ -266,7 +266,7 @@ export function registerInsuranceAdminRoutes(app: Express): void {
   // POST /api/insurance/approve-workflow/:id  — approve a workflow draft
   app.post("/api/insurance/approve-workflow/:id", async (req: Request, res: Response) => {
     if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
-    const workflowId = parseInt(req.params.id, 10);
+    const workflowId = parseInt(String(req.params.id), 10);
     const { approvedBy, draftContent } = req.body;
     if (!approvedBy || typeof approvedBy !== "string") {
       return res.status(400).json({ error: "approvedBy (string) required" });
@@ -283,7 +283,7 @@ export function registerInsuranceAdminRoutes(app: Express): void {
   // POST /api/insurance/reject-workflow/:id  — reject / cancel a workflow
   app.post("/api/insurance/reject-workflow/:id", async (req: Request, res: Response) => {
     if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
-    const workflowId = parseInt(req.params.id, 10);
+    const workflowId = parseInt(String(req.params.id), 10);
     const { rejectedBy, reason } = req.body;
     if (!rejectedBy || typeof rejectedBy !== "string") {
       return res.status(400).json({ error: "rejectedBy (string) required" });
@@ -300,7 +300,7 @@ export function registerInsuranceAdminRoutes(app: Express): void {
   // GET /api/insurance/workflow-audit/:id  — approval audit timeline
   app.get("/api/insurance/workflow-audit/:id", async (req: Request, res: Response) => {
     if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
-    const workflowId = parseInt(req.params.id, 10);
+    const workflowId = parseInt(String(req.params.id), 10);
     try {
       const timeline = await getWorkflowAuditTimeline(workflowId);
       return res.json({ timeline });
@@ -333,7 +333,7 @@ export function registerInsuranceAdminRoutes(app: Express): void {
   // Execute a single approved workflow. Requires subAccountId in body.
   app.post("/api/insurance/execute-workflow/:id", async (req: Request, res: Response) => {
     if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
-    const workflowId    = parseInt(req.params.id, 10);
+    const workflowId    = parseInt(String(req.params.id), 10);
     const subAccountId  = parseInt(String(req.body.subAccountId ?? "0"), 10);
     const callerAgencyId = parseInt(String(req.body.agencyId ?? "0"), 10);
     const channelOverride = req.body.channel as "sms" | "email" | "voice" | undefined;

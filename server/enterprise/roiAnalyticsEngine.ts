@@ -169,7 +169,7 @@ export async function getPlatformRoiSummary(): Promise<{
   let totalLeads = 0, totalConversions = 0, totalReplies = 0;
   let totalHours = 0, totalMissedCall = 0, totalRevenue = 0;
 
-  for (const snap of grouped.values()) {
+  for (const snap of Array.from(grouped.values())) {
     totalLeads        += snap.totalLeads       || 0;
     totalConversions  += snap.leadsConverted   || 0;
     totalReplies      += snap.aiResponsesSent  || 0;

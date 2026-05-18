@@ -193,7 +193,7 @@ export function registerServiceIndustryAdminRoutes(app: Express): void {
 
   app.post("/api/service/missed-call/:id/replied", async (req: Request, res: Response) => {
     try {
-      await markMissedCallReplied(req.params.id);
+      await markMissedCallReplied(String(req.params.id));
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err?.message });
@@ -202,7 +202,7 @@ export function registerServiceIndustryAdminRoutes(app: Express): void {
 
   app.post("/api/service/missed-call/:id/booked", async (req: Request, res: Response) => {
     try {
-      await markMissedCallBooked(req.params.id);
+      await markMissedCallBooked(String(req.params.id));
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err?.message });
@@ -212,7 +212,7 @@ export function registerServiceIndustryAdminRoutes(app: Express): void {
   app.post("/api/service/missed-call/:id/escalated", async (req: Request, res: Response) => {
     try {
       const { reason } = req.body;
-      await markMissedCallEscalated(req.params.id, reason ?? "manual_escalation");
+      await markMissedCallEscalated(String(req.params.id), reason ?? "manual_escalation");
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err?.message });
@@ -236,7 +236,7 @@ export function registerServiceIndustryAdminRoutes(app: Express): void {
 
   app.get("/api/service/customers/at-risk", async (req: Request, res: Response) => {
     try {
-      const businessId = qs(req.query.businessId);
+      const businessId = qs(req.query.businessId) ?? "";
       const limit = Number(req.query.limit ?? 50);
       const data = await getAtRiskCustomers(businessId, limit);
       res.json({ ok: true, data });
@@ -247,7 +247,7 @@ export function registerServiceIndustryAdminRoutes(app: Express): void {
 
   app.get("/api/service/customers/vip", async (req: Request, res: Response) => {
     try {
-      const businessId = qs(req.query.businessId);
+      const businessId = qs(req.query.businessId) ?? "";
       const limit = Number(req.query.limit ?? 50);
       const data = await getVipCustomers(businessId, limit);
       res.json({ ok: true, data });
@@ -258,7 +258,7 @@ export function registerServiceIndustryAdminRoutes(app: Express): void {
 
   app.get("/api/service/appointments/stats", async (req: Request, res: Response) => {
     try {
-      const businessId = qs(req.query.businessId);
+      const businessId = qs(req.query.businessId) ?? "";
       const data = await getAppointmentStats(businessId);
       res.json({ ok: true, data });
     } catch (err: any) {
@@ -308,7 +308,7 @@ export function registerServiceIndustryAdminRoutes(app: Express): void {
 
   app.post("/api/service/review/:id/responded", async (req: Request, res: Response) => {
     try {
-      await markReviewResponded(req.params.id);
+      await markReviewResponded(String(req.params.id));
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err?.message });
@@ -317,7 +317,7 @@ export function registerServiceIndustryAdminRoutes(app: Express): void {
 
   app.post("/api/service/review/:id/alert-sent", async (req: Request, res: Response) => {
     try {
-      await markAlertSent(req.params.id);
+      await markAlertSent(String(req.params.id));
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err?.message });
@@ -366,7 +366,7 @@ export function registerServiceIndustryAdminRoutes(app: Express): void {
       if (!approvedBy || approvedBy.trim().length < 2) {
         return res.status(400).json({ ok: false, error: "approvedBy (≥2 chars) required" });
       }
-      await approveRetentionDraft(req.params.id, approvedBy);
+      await approveRetentionDraft(String(req.params.id), approvedBy);
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err?.message });
@@ -376,7 +376,7 @@ export function registerServiceIndustryAdminRoutes(app: Express): void {
   app.post("/api/service/retention/:id/reject", async (req: Request, res: Response) => {
     try {
       const { reason } = req.body;
-      await rejectRetentionDraft(req.params.id, reason ?? "manual_rejection");
+      await rejectRetentionDraft(String(req.params.id), reason ?? "manual_rejection");
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err?.message });
@@ -425,7 +425,7 @@ export function registerServiceIndustryAdminRoutes(app: Express): void {
     try {
       const businessId = qs(req.query.businessId) ?? "";
       if (!businessId) return res.status(400).json({ ok: false, error: "businessId required" });
-      const data = await getLoyaltySummary(businessId, req.params.customerId);
+      const data = await getLoyaltySummary(businessId, String(req.params.customerId));
       res.json({ ok: true, data });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err?.message });
@@ -437,7 +437,7 @@ export function registerServiceIndustryAdminRoutes(app: Express): void {
       const businessId = qs(req.query.businessId) ?? "";
       if (!businessId) return res.status(400).json({ ok: false, error: "businessId required" });
       const limit = Number(req.query.limit ?? 20);
-      const data = await getLoyaltyLedger(businessId, req.params.customerId, limit);
+      const data = await getLoyaltyLedger(businessId, String(req.params.customerId), limit);
       res.json({ ok: true, data });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err?.message });
@@ -500,7 +500,7 @@ export function registerServiceIndustryAdminRoutes(app: Express): void {
   app.post("/api/service/receptionist/:id/close", async (req: Request, res: Response) => {
     try {
       const { reason } = req.body;
-      await closeSession(req.params.id, reason);
+      await closeSession(String(req.params.id), reason);
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err?.message });

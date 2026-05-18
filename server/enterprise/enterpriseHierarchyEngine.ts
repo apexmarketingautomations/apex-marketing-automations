@@ -147,7 +147,7 @@ export async function getSubtreeAccountIds(rootNodeId: number): Promise<number[]
     }
   }
 
-  return [...new Set(result)];
+  return Array.from(new Set(result));
 }
 
 /** Link a sub_account to an existing hierarchy node. */

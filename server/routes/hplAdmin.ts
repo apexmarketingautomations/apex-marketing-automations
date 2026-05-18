@@ -160,7 +160,7 @@ export function registerHplAdminRoutes(app: Express): void {
 
   app.post("/api/hpl/route-lead/:leadId", async (req: Request, res: Response) => {
     if (!isUserAdmin(req)) return res.status(403).json({ error: "admin_required" });
-    const leadId = parseInt(req.params.leadId, 10);
+    const leadId = parseInt(String(req.params.leadId), 10);
     if (isNaN(leadId)) return res.status(400).json({ error: "invalid_lead_id" });
 
     try {

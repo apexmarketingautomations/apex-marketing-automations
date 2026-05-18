@@ -281,9 +281,9 @@ async function fallbackTwilioVoice(opts: {
   opts:            any;
 }): Promise<{ sessionId: string; communicationId: string; ok: boolean; error?: string }> {
   try {
-    const { getTwilioClientForAccount } = await import("../twilioClient");
-    const twilio = await getTwilioClientForAccount(opts.tenantId);
-    if (!twilio.client || !twilio.phoneNumber) throw new Error("Twilio not provisioned for tenant");
+    const { getTwilioClientForAccount } = await import("../twilioClientFactory");
+    const twilio = await getTwilioClientForAccount(Number(opts.tenantId));
+    if (!twilio || !twilio.client || !twilio.phoneNumber) throw new Error("Twilio not provisioned for tenant");
 
     const message = buildFirstMessage(opts.persona, opts.businessName);
     await twilio.client.calls.create({

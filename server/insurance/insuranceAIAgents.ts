@@ -23,7 +23,7 @@
  */
 
 import { runAgent } from "../ai/agentCoordinator";
-import type { AgentDefinition } from "../ai/types";
+import type { AgentDefinition } from "../ai/agentCoordinator";
 import type { HouseholdEntity, InsuranceOpportunity, CommercialRiskEntity } from "./types";
 import { scorePolicy, detectOpportunityTypes, estimateHouseholdPremium } from "./policyScoringService";
 
@@ -76,7 +76,7 @@ function hasKeys(v: Record<string, unknown>, keys: string[]): boolean {
 
 // ── Agent 1: Household Risk Analysis ─────────────────────────────────────────
 
-const householdRiskAgent: AgentDefinition<HouseholdRiskSummary> = {
+const householdRiskAgent = {
   agentId: "insurance_household_risk",
   displayName: "Household Risk Analysis Agent",
   model: "claude-sonnet",
@@ -105,7 +105,7 @@ Return JSON with fields: householdId, riskLevel, primaryRiskFactors (array),
 opportunityTypes (array), estimatedAnnualPremium (number), recommendedLines (array),
 followUpStrategy (string), urgency.`;
   },
-  outputValidator: (v): v is HouseholdRiskSummary =>
+  outputValidator: (v: unknown): v is HouseholdRiskSummary =>
     isObj(v) &&
     hasKeys(v, ["riskLevel", "primaryRiskFactors", "opportunityTypes", "recommendedLines", "followUpStrategy", "urgency"]) &&
     ["low", "moderate", "high", "critical"].includes(v.riskLevel as string),
@@ -117,14 +117,14 @@ export async function runHouseholdRiskAnalysis(
   household: HouseholdEntity,
   subAccountId?: number,
 ): Promise<HouseholdRiskSummary | null> {
-  const result = await runAgent(householdRiskAgent, household, { subAccountId });
-  if (!result.success || !result.output) return null;
+  const result: any = await runAgent(householdRiskAgent as any, household, { subAccountId });
+  if (!result.ok || !result.output) return null;
   return result.output;
 }
 
 // ── Agent 2: Storm Opportunity ────────────────────────────────────────────────
 
-const stormOpportunityAgent: AgentDefinition<StormOpportunitySummary> = {
+const stormOpportunityAgent = {
   agentId: "insurance_storm_opportunity",
   displayName: "Storm Insurance Opportunity Agent",
   model: "claude-sonnet",
@@ -145,7 +145,7 @@ Properties with aging roofs: ${d.roofReplacementCount}
 Return JSON with: county, stormType, claimsLikely (boolean), roofReplacementWindow (string),
 outreachTiming (string), contactStrategy (string), estimatedOpportunityCount (number).`;
   },
-  outputValidator: (v): v is StormOpportunitySummary =>
+  outputValidator: (v: unknown): v is StormOpportunitySummary =>
     isObj(v) && hasKeys(v, ["county", "stormType", "claimsLikely", "outreachTiming", "contactStrategy"]),
   requiredAction: "read_data",
   maxRetries: 2,
@@ -159,13 +159,13 @@ export async function runStormOpportunityAnalysis(opts: {
   windSpeed?: number;
   roofReplacementCount: number;
 }, subAccountId?: number): Promise<StormOpportunitySummary | null> {
-  const result = await runAgent(stormOpportunityAgent, opts, { subAccountId });
-  return result.success ? result.output ?? null : null;
+  const result: any = await runAgent(stormOpportunityAgent as any, opts, { subAccountId });
+  return result.ok ? result.output ?? null : null;
 }
 
 // ── Agent 3: Commercial Policy ────────────────────────────────────────────────
 
-const commercialPolicyAgent: AgentDefinition<CommercialPolicySummary> = {
+const commercialPolicyAgent = {
   agentId: "insurance_commercial_policy",
   displayName: "Commercial Policy Opportunity Agent",
   model: "claude-sonnet",
@@ -188,7 +188,7 @@ GL: ${b.glOpportunity ? "✓" : "—"}  WC: ${b.wcOpportunity ? "✓" : "—"}  
 Return JSON with: businessId, coverageGaps (array), priorityLine (string),
 estimatedPremium (number), approachStrategy (string).`;
   },
-  outputValidator: (v): v is CommercialPolicySummary =>
+  outputValidator: (v: unknown): v is CommercialPolicySummary =>
     isObj(v) && hasKeys(v, ["coverageGaps", "priorityLine", "estimatedPremium", "approachStrategy"]),
   requiredAction: "read_data",
   maxRetries: 2,
@@ -198,13 +198,13 @@ export async function runCommercialPolicyAnalysis(
   business: CommercialRiskEntity,
   subAccountId?: number,
 ): Promise<CommercialPolicySummary | null> {
-  const result = await runAgent(commercialPolicyAgent, business, { subAccountId });
-  return result.success ? result.output ?? null : null;
+  const result: any = await runAgent(commercialPolicyAgent as any, business, { subAccountId });
+  return result.ok ? result.output ?? null : null;
 }
 
 // ── Agent 4: Homeowner Opportunity ────────────────────────────────────────────
 
-const homeownerOpportunityAgent: AgentDefinition<{ summary: string; urgency: string; recommendedAction: string }> = {
+const homeownerOpportunityAgent = {
   agentId: "insurance_homeowner_opportunity",
   displayName: "Homeowner Coverage Opportunity Agent",
   model: "claude-haiku",
@@ -220,7 +220,7 @@ Signals: ${(h.activeSignals ?? []).join(", ") || "none"}
 
 Return JSON: summary (string), urgency (low/medium/high), recommendedAction (string).`;
   },
-  outputValidator: (v): v is { summary: string; urgency: string; recommendedAction: string } =>
+  outputValidator: (v: unknown): v is { summary: string; urgency: string; recommendedAction: string } =>
     isObj(v) && hasKeys(v, ["summary", "urgency", "recommendedAction"]),
   requiredAction: "read_data",
   maxRetries: 1,
@@ -230,13 +230,13 @@ export async function runHomeownerOpportunityAnalysis(
   household: HouseholdEntity,
   subAccountId?: number,
 ) {
-  const result = await runAgent(homeownerOpportunityAgent, household, { subAccountId });
-  return result.success ? result.output ?? null : null;
+  const result: any = await runAgent(homeownerOpportunityAgent as any, household, { subAccountId });
+  return result.ok ? result.output ?? null : null;
 }
 
 // ── Agent 5: Auto Policy Opportunity ─────────────────────────────────────────
 
-const autoPolicyAgent: AgentDefinition<{ riskCategory: string; placement: string; estimatedPremium: number; urgency: string }> = {
+const autoPolicyAgent = {
   agentId: "insurance_auto_policy",
   displayName: "Auto Policy Opportunity Agent",
   model: "claude-haiku",
@@ -252,7 +252,7 @@ Signals: ${(h.activeSignals ?? []).join(", ") || "none"}
 
 Return JSON: riskCategory (standard/preferred/high-risk/non-standard), placement (string), estimatedPremium (number), urgency (low/medium/high/immediate).`;
   },
-  outputValidator: (v): v is { riskCategory: string; placement: string; estimatedPremium: number; urgency: string } =>
+  outputValidator: (v: unknown): v is { riskCategory: string; placement: string; estimatedPremium: number; urgency: string } =>
     isObj(v) && hasKeys(v, ["riskCategory", "placement", "estimatedPremium", "urgency"]),
   requiredAction: "read_data",
   maxRetries: 1,
@@ -262,13 +262,13 @@ export async function runAutoPolicyAnalysis(
   household: HouseholdEntity,
   subAccountId?: number,
 ) {
-  const result = await runAgent(autoPolicyAgent, household, { subAccountId });
-  return result.success ? result.output ?? null : null;
+  const result: any = await runAgent(autoPolicyAgent as any, household, { subAccountId });
+  return result.ok ? result.output ?? null : null;
 }
 
 // ── Agent 6: Bundling Recommendation ─────────────────────────────────────────
 
-const bundlingAgent: AgentDefinition<BundlingSummary> = {
+const bundlingAgent = {
   agentId: "insurance_bundling",
   displayName: "Insurance Bundling Recommendation Agent",
   model: "claude-haiku",
@@ -284,7 +284,7 @@ Policy Opportunity Score: ${h.policyOpportunityScore ?? 0}/100
 
 Return JSON: householdId, bundlingLines (array of line names), estimatedSavings (annual $), approachAngle (string).`;
   },
-  outputValidator: (v): v is BundlingSummary =>
+  outputValidator: (v: unknown): v is BundlingSummary =>
     isObj(v) && hasKeys(v, ["bundlingLines", "estimatedSavings", "approachAngle"]),
   requiredAction: "read_data",
   maxRetries: 1,
@@ -294,6 +294,6 @@ export async function runBundlingAnalysis(
   household: HouseholdEntity,
   subAccountId?: number,
 ): Promise<BundlingSummary | null> {
-  const result = await runAgent(bundlingAgent, household, { subAccountId });
-  return result.success ? result.output ?? null : null;
+  const result: any = await runAgent(bundlingAgent as any, household, { subAccountId });
+  return result.ok ? result.output ?? null : null;
 }

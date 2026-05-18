@@ -258,11 +258,10 @@ export async function executeSms(communicationId: string, tenantId: string): Pro
 
   try {
     // Dispatch to HPL send infrastructure
-    const { sendSms } = await import("../hplSms");
+    const { sendSms } = await import("../twilioClient");
     const sendResult = await sendSms({
-      toPhone: sms.contact_phone,
-      body:    sms.content,
-      path:    "scoped-sms",
+      to:   sms.contact_phone,
+      body: sms.content,
     });
 
     const providerMessageId = (sendResult as any)?.sid ?? (sendResult as any)?.messageId ?? "unknown";

@@ -230,7 +230,7 @@ async function _getBillingData(since: Date, until: Date) {
     totalMonthlySpend += row.totalCost;
   }
 
-  const topAccountsBySpend = [...byAccount.entries()]
+  const topAccountsBySpend = Array.from(byAccount.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([subAccountId, spend]) => ({ subAccountId, spend: parseFloat(spend.toFixed(4)) }));

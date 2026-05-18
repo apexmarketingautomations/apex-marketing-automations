@@ -77,7 +77,7 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
   });
 
   app.get("/api/enterprise/dashboard/:id", isUserAdmin, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     if (!id) return res.status(400).json({ error: "Invalid id" });
     try {
       const data = await getAccountDashboard(id);
@@ -121,7 +121,7 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
   });
 
   app.get("/api/enterprise/tenants/:id/usage", isUserAdmin, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     if (!id) return res.status(400).json({ error: "Invalid id" });
     try {
       const summary = await getUsageSummary(id);
@@ -132,7 +132,7 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
   });
 
   app.post("/api/enterprise/tenants/:id/plan", isUserAdmin, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     const { planTier } = req.body;
     if (!id || !planTier) return res.status(400).json({ error: "id and planTier required" });
     try {
@@ -144,7 +144,7 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
   });
 
   app.post("/api/enterprise/tenants/:id/suspend", isUserAdmin, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     const { suspended, reason } = req.body;
     if (!id) return res.status(400).json({ error: "Invalid id" });
     try {
@@ -156,7 +156,7 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
   });
 
   app.post("/api/enterprise/tenants/:id/flag", isUserAdmin, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     const { flag, value } = req.body;
     if (!id || !flag) return res.status(400).json({ error: "id and flag required" });
     try {
@@ -168,7 +168,7 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
   });
 
   app.post("/api/enterprise/tenants/:id/provision", isUserAdmin, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     const { planTier } = req.body;
     if (!id) return res.status(400).json({ error: "Invalid id" });
     try {
@@ -194,7 +194,7 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
   });
 
   app.get("/api/enterprise/billing/:id/estimate", isUserAdmin, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     if (!id) return res.status(400).json({ error: "Invalid id" });
     try {
       const estimate = await estimateMonthlyCost(id);
@@ -207,7 +207,7 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
   // ── ROI Analytics ─────────────────────────────────────────────────────────
 
   app.get("/api/enterprise/roi/:id", isUserAdmin, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     if (!id) return res.status(400).json({ error: "Invalid id" });
     try {
       const snap = await getLatestRoiSnapshot(id);
@@ -218,7 +218,7 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
   });
 
   app.post("/api/enterprise/roi/:id/compute", isUserAdmin, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     const { platformCost } = req.body;
     if (!id) return res.status(400).json({ error: "Invalid id" });
     try {
@@ -249,7 +249,7 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
   });
 
   app.get("/api/enterprise/audit/:id", isUserAdmin, async (req: Request, res: Response) => {
-    const id = parseInt(req.params.id);
+    const id = parseInt(String(req.params.id));
     if (!id) return res.status(400).json({ error: "Invalid id" });
     try {
       const result = await queryAuditEvents({

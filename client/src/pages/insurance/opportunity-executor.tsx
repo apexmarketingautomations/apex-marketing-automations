@@ -161,7 +161,7 @@ function QueuePanel({ selected, onSelect }: QueuePanelProps) {
           onChange={e => setTypeFilter(e.target.value)}
         >
           <option value="all">All Types</option>
-          {typeSet.map(t => (
+          {(typeSet as string[]).map(t => (
             <option key={t} value={t}>{workflowTypeLabel(t)}</option>
           ))}
         </select>

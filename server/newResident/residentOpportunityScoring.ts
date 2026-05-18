@@ -132,7 +132,7 @@ function recommendWorkflows(
   }
 
   // De-duplicate
-  return [...new Set(workflows)].slice(0, 5);
+  return Array.from(new Set(workflows)).slice(0, 5);
 }
 
 // ── Main scoring function ─────────────────────────────────────────────────────
