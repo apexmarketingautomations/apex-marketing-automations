@@ -396,6 +396,8 @@ export interface AIOptions {
   route?: string;
   traceId?: string;
   subAccountId?: string | number;
+  /** Force a specific provider for this call (used by agentCoordinator routing) */
+  forceProvider?: string;
 }
 
 export interface AIResponse {
@@ -569,7 +571,7 @@ export function getAIProviderStatus(): {
 }
 
 export function isAIConfigured(): boolean {
-  return isAnthropicConfigured() || isOpenAIConfigured() || isGeminiConfigured();
+  return isAnthropicConfigured() || isOpenAIConfigured() || isGeminiConfigured() || isGroqConfigured();
 }
 
 function generateRequestId(): string {
@@ -699,6 +701,79 @@ async function callGemini(
   };
 }
 
+// ── Groq provider (OpenAI-compatible, free tier) ──────────────────────────────
+const GROQ_BASE_URL    = "https://api.groq.com/openai/v1";
+const GROQ_MODEL_FAST  = "llama-3.1-8b-instant";
+const GROQ_MODEL_STD   = "llama-3.3-70b-versatile";
+
+export function isGroqConfigured(): boolean {
+  return !!process.env.GROQ_API_KEY?.trim();
+}
+
+function getGroqKey(): string {
+  return process.env.GROQ_API_KEY?.trim() ?? "";
+}
+
+async function callGroq(
+  messages: ChatMessage[],
+  options: AIOptions = {},
+): Promise<AIResponse> {
+  const { temperature = 0.3, maxTokens = 2048, timeoutMs = DEFAULT_TIMEOUT_MS, jsonMode = false } = options;
+  const _start = Date.now();
+  const model  = maxTokens <= 1024 ? GROQ_MODEL_FAST : GROQ_MODEL_STD;
+
+  const body: Record<string, unknown> = {
+    model,
+    messages:   messages.map(m => ({ role: m.role, content: m.content })),
+    max_tokens: Math.min(maxTokens, 32_768),
+    temperature,
+  };
+  if (jsonMode) body.response_format = { type: "json_object" };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+      method:  "POST",
+      signal:  controller.signal,
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${getGroqKey()}`,
+      },
+      body: JSON.stringify(body),
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      const preview = (await res.text()).slice(0, 300);
+      throw Object.assign(new Error(`Groq HTTP ${res.status}: ${preview}`), { status: res.status });
+    }
+
+    const data = await res.json() as any;
+    const text = data?.choices?.[0]?.message?.content ?? "";
+    recordProviderSuccess("groq", Date.now() - _start);
+    return {
+      text,
+      ok:       true,
+      provider: "groq" as any,
+      model,
+      usage: {
+        promptTokens:     data?.usage?.prompt_tokens,
+        completionTokens: data?.usage?.completion_tokens,
+        totalTokens:      data?.usage?.total_tokens,
+      },
+    };
+  } catch (err: any) {
+    clearTimeout(timer);
+    recordProviderFailure("groq", {
+      isQuotaError: err?.status === 429,
+      isAuthError:  err?.status === 401 || err?.status === 403,
+      isTransient:  err?.status === 500 || err?.status === 503,
+    });
+    throw err;
+  }
+}
+
 function selectProvider(): "anthropic" | "openai" | "gemini" {
   if (isAnthropicConfigured() && !isAnthropicQuotaFailed()) {
     console.log("[AI-GATEWAY] Provider selected: anthropic");
@@ -720,8 +795,21 @@ export async function aiChat(
   options: AIOptions = {}
 ): Promise<AIResponse> {
   const requestId = generateRequestId();
-  const { route, traceId, subAccountId } = options;
+  const { route, traceId, subAccountId, forceProvider } = options;
   const start = Date.now();
+
+  // ── forceProvider: "groq" — agent coordinator explicitly routed here ────────
+  if (forceProvider === "groq" && isGroqConfigured()) {
+    try {
+      const result = await callGroq(messages, options);
+      logObservability({ requestId, traceId, subAccountId, route, provider: "groq" as any, model: result.model, latencyMs: Date.now() - start, success: true, fallbackTriggered: false });
+      return result;
+    } catch (err: any) {
+      console.warn(`[AI-GATEWAY] Groq failed (${err?.message}), falling back to Anthropic`);
+      // Fall through to normal chain
+    }
+  }
+
   const provider = selectProvider();
 
   try {
@@ -787,6 +875,17 @@ export async function aiChat(
           console.warn(`[AI-GATEWAY] OpenAI failed (${err?.message}), falling back to Gemini`);
           break;
         }
+      }
+    }
+
+    // Try Groq before giving up
+    if (isGroqConfigured()) {
+      try {
+        const result = await callGroq(messages, options);
+        logObservability({ requestId, traceId, subAccountId, route, provider: "groq" as any, model: result.model, latencyMs: Date.now() - start, success: true, fallbackTriggered: true });
+        return result;
+      } catch (groqErr: any) {
+        console.warn(`[AI-GATEWAY] Groq fallback also failed: ${groqErr?.message}`);
       }
     }
 

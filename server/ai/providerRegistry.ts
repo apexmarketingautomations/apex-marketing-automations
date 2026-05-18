@@ -171,6 +171,31 @@ const MODEL_CATALOGUE: ModelProfile[] = [
     p99LatencyMs:  1_500,
     qualityTier:   3,
   },
+  // ── Groq (free inference — LPU) ───────────────────────────────────────────
+  {
+    modelId:       "llama-3.3-70b-versatile",
+    name:          "Llama 3.3 70B (Groq)",
+    provider:      "groq",
+    contextWindow: 131_072,
+    maxOutputTokens: 32_768,
+    capabilities:  ["structured-json", "function-calling", "streaming", "low-cost", "low-latency"],
+    cost:          { inputPer1kTokens: 0, outputPer1kTokens: 0 }, // free tier
+    p50LatencyMs:  150,
+    p99LatencyMs:  800,
+    qualityTier:   2,
+  },
+  {
+    modelId:       "llama-3.1-8b-instant",
+    name:          "Llama 3.1 8B Instant (Groq)",
+    provider:      "groq",
+    contextWindow: 131_072,
+    maxOutputTokens: 131_072,
+    capabilities:  ["structured-json", "streaming", "low-cost", "low-latency"],
+    cost:          { inputPer1kTokens: 0, outputPer1kTokens: 0 },
+    p50LatencyMs:  80,
+    p99LatencyMs:  400,
+    qualityTier:   3,
+  },
   // ── Ollama (local) ─────────────────────────────────────────────────────────
   {
     modelId:       "llama3.2:3b",
