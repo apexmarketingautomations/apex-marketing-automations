@@ -62,9 +62,30 @@ import {
 import { db } from "../db";
 import { enterpriseTenantQuotas } from "@shared/schema";
 
+// ── Query parameter helpers ─────────────────────────────────────────────────
+
+/**
+ * Safely extract a single string from Express query parameters.
+ * Express query can be string | string[] | undefined; this normalizes to string | undefined.
+ */
+function getStringParam(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) return value[0];
+  return value;
+}
+
+/**
+ * Safely extract a numeric parameter from Express query/params.
+ */
+function getNumParam(value: string | string[] | undefined): number | null {
+  const str = getStringParam(value);
+  if (!str) return null;
+  const num = parseInt(str, 10);
+  return isNaN(num) ? null : num;
+}
+
 export function registerEnterpriseAdminRoutes(app: Express): void {
 
-  // ── Platform executive dashboard ──────────────────────────────────────────
+  // ── Platform executive dashboard ────────────────────────────────────────────
 
   app.get("/api/enterprise/dashboard", isUserAdmin, async (_req: Request, res: Response) => {
     try {
@@ -87,7 +108,7 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
     }
   });
 
-  // ── Hierarchy ─────────────────────────────────────────────────────────────
+  // ── Hierarchy ──────────────────────────────────────────────────────────[...]
 
   app.get("/api/enterprise/hierarchy", isUserAdmin, async (_req: Request, res: Response) => {
     try {
@@ -136,7 +157,7 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
     const { planTier } = req.body;
     if (!id || !planTier) return res.status(400).json({ error: "id and planTier required" });
     try {
-      await setTenantPlan(id, planTier, (req as any).user?.id || "admin");
+      await setTenantPlan(id, planTier as string, (req as any).user?.id || "admin");
       res.json({ ok: true, subAccountId: id, planTier });
     } catch (err: any) {
       res.status(500).json({ error: err?.message });
@@ -148,7 +169,7 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
     const { suspended, reason } = req.body;
     if (!id) return res.status(400).json({ error: "Invalid id" });
     try {
-      await setTenantSuspension(id, !!suspended, reason || "", (req as any).user?.id || "admin");
+      await setTenantSuspension(id, !!suspended, (reason as string) || "", (req as any).user?.id || "admin");
       res.json({ ok: true, subAccountId: id, suspended });
     } catch (err: any) {
       res.status(500).json({ error: err?.message });
@@ -160,7 +181,7 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
     const { flag, value } = req.body;
     if (!id || !flag) return res.status(400).json({ error: "id and flag required" });
     try {
-      await setFeatureFlag(id, flag, !!value, (req as any).user?.id || "admin");
+      await setFeatureFlag(id, flag as string, !!value, (req as any).user?.id || "admin");
       res.json({ ok: true, subAccountId: id, flag, value });
     } catch (err: any) {
       res.status(500).json({ error: err?.message });
@@ -172,14 +193,14 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
     const { planTier } = req.body;
     if (!id) return res.status(400).json({ error: "Invalid id" });
     try {
-      const quota = await ensureTenantQuota(id, planTier || "starter");
+      const quota = await ensureTenantQuota(id, (planTier as string) || "starter");
       res.json(quota);
     } catch (err: any) {
       res.status(500).json({ error: err?.message });
     }
   });
 
-  // ── Billing ───────────────────────────────────────────────────────────────
+  // ── Billing ──────────────────────────────────────────────────────────[...]
 
   app.get("/api/enterprise/billing/report", isUserAdmin, async (req: Request, res: Response) => {
     try {
@@ -204,7 +225,7 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
     }
   });
 
-  // ── ROI Analytics ─────────────────────────────────────────────────────────
+  // ── ROI Analytics ────────────────────────────────────────────────────────[...]
 
   app.get("/api/enterprise/roi/:id", isUserAdmin, async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
@@ -229,18 +250,24 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
     }
   });
 
-  // ── Audit Log ─────────────────────────────────────────────────────────────
+  // ── Audit Log ─────────────────────────────────────────────────────────[...]
 
   app.get("/api/enterprise/audit", isUserAdmin, async (req: Request, res: Response) => {
     try {
-      const { eventType, actor, since, until, limit, offset } = req.query;
+      const eventType = getStringParam(req.query.eventType);
+      const actor = getStringParam(req.query.actor);
+      const sinceStr = getStringParam(req.query.since);
+      const untilStr = getStringParam(req.query.until);
+      const limitStr = getStringParam(req.query.limit);
+      const offsetStr = getStringParam(req.query.offset);
+
       const result = await queryAuditEvents({
-        eventType: eventType as string,
-        actor:     actor as string,
-        since:     since ? new Date(String(since)) : undefined,
-        until:     until ? new Date(String(until)) : undefined,
-        limit:     parseInt(String(limit || "50")),
-        offset:    parseInt(String(offset || "0")),
+        eventType: eventType,
+        actor: actor,
+        since: sinceStr ? new Date(sinceStr) : undefined,
+        until: untilStr ? new Date(untilStr) : undefined,
+        limit: parseInt(limitStr || "50", 10),
+        offset: parseInt(offsetStr || "0", 10),
       });
       res.json(result);
     } catch (err: any) {
@@ -252,10 +279,13 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
     const id = parseInt(req.params.id);
     if (!id) return res.status(400).json({ error: "Invalid id" });
     try {
+      const limitStr = getStringParam(req.query.limit);
+      const offsetStr = getStringParam(req.query.offset);
+
       const result = await queryAuditEvents({
         subAccountId: id,
-        limit:  parseInt(String(req.query.limit  || "50")),
-        offset: parseInt(String(req.query.offset || "0")),
+        limit: parseInt(limitStr || "50", 10),
+        offset: parseInt(offsetStr || "0", 10),
       });
       res.json(result);
     } catch (err: any) {
@@ -263,7 +293,7 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
     }
   });
 
-  // ── RBAC ──────────────────────────────────────────────────────────────────
+  // ── RBAC ───────────────────────────────────────────────────────────[...]
 
   app.get("/api/enterprise/roles", isUserAdmin, async (_req: Request, res: Response) => {
     try {
@@ -279,10 +309,10 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
     if (!userId || !roleName) return res.status(400).json({ error: "userId and roleName required" });
     try {
       await assignRole({
-        userId,
-        roleName,
-        scopeNodeId,
-        subAccountId,
+        userId: userId as string,
+        roleName: roleName as string,
+        scopeNodeId: scopeNodeId as number | undefined,
+        subAccountId: subAccountId as number | undefined,
         grantedBy: (req as any).user?.id || "admin",
         expiresAt: expiresAt ? new Date(expiresAt) : undefined,
       });
@@ -292,7 +322,7 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
     }
   });
 
-  // ── White-label ───────────────────────────────────────────────────────────
+  // ── White-label ─────────────────────────────────────────────────────────[...]
 
   app.get("/api/enterprise/white-label", isUserAdmin, async (_req: Request, res: Response) => {
     try {
@@ -313,10 +343,20 @@ export function registerEnterpriseAdminRoutes(app: Express): void {
   });
 
   app.get("/api/enterprise/white-label/validate-domain", isUserAdmin, async (req: Request, res: Response) => {
-    const { domain, subAccountId } = req.query;
-    if (!domain || !subAccountId) return res.status(400).json({ error: "domain and subAccountId required" });
+    const domain = getStringParam(req.query.domain);
+    const subAccountIdStr = getStringParam(req.query.subAccountId);
+    
+    if (!domain || !subAccountIdStr) {
+      return res.status(400).json({ error: "domain and subAccountId required" });
+    }
+    
+    const subAccountId = parseInt(subAccountIdStr, 10);
+    if (isNaN(subAccountId)) {
+      return res.status(400).json({ error: "subAccountId must be numeric" });
+    }
+    
     try {
-      const result = await validateCustomDomain(String(domain), parseInt(String(subAccountId)));
+      const result = await validateCustomDomain(domain, subAccountId);
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err?.message });

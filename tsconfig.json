@@ -6,6 +6,7 @@
     "tsBuildInfoFile": "./node_modules/typescript/tsbuildinfo",
     "noEmit": true,
     "module": "ESNext",
+    "target": "ES2020",
     "strict": true,
     "lib": ["esnext", "dom", "dom.iterable"],
     "jsx": "preserve",
@@ -14,6 +15,7 @@
     "allowImportingTsExtensions": true,
     "moduleResolution": "bundler",
     "baseUrl": ".",
+    "downlevelIteration": true,
     "types": ["node", "vite/client", "google.maps"],
     "paths": {
       "@/*": ["./client/src/*"],
