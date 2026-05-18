@@ -1207,6 +1207,13 @@ const MIGRATIONS: DataMigration[] = [
           AND skip_trace_status = 'no_match';
     `,
   },
+  {
+    name: "2026-05-18-card-identity-dna",
+    sql: `
+      ALTER TABLE digital_cards ADD COLUMN IF NOT EXISTS identity_dna jsonb;
+      ALTER TABLE standalone_cards ADD COLUMN IF NOT EXISTS identity_dna jsonb;
+    `,
+  },
 ];
 
 export async function runDataMigrations(): Promise<void> {

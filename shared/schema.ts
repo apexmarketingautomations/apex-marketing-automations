@@ -1511,6 +1511,7 @@ export const digitalCards = pgTable("digital_cards", {
   saveContactCount: integer("save_contact_count").default(0),
   shareCount: integer("share_count").default(0),
   clickStats: jsonb("click_stats").$type<Record<string, number>>().default({}),
+  identityDna: jsonb("identity_dna"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -2307,6 +2308,7 @@ export const standaloneCards = pgTable("standalone_cards", {
   removeApexBranding: boolean("remove_apex_branding").default(false),
   premiumSupportFlag: boolean("premium_support_flag").default(false),
   published: boolean("published").default(false),
+  identityDna: jsonb("identity_dna"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
