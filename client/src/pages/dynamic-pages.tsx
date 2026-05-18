@@ -379,7 +379,6 @@ export default function DynamicPages() {
     setGenerated(true);
     if (tab === "templates") setTab("builder");
   }, [tab]);
-
   const filtered = useMemo(() => {
     return TEMPLATES.filter(t => {
       const matchCat = category === "All" || t.category === category;
