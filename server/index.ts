@@ -779,21 +779,23 @@ async function validateMetaCredentials() {
     console.error("[STARTUP] CourtListener pipeline failed to start (non-fatal):", clErr?.message);
   }
 
-  try {
-    const { startHillsboroughRecordsScheduler } = await import("./hillsboroughRecordsPipeline");
-    startHillsboroughRecordsScheduler();
-    console.log("[STARTUP] ✅ Hillsborough Official Records pipeline started — lis pendens + judgments (daily at 06:00 ET)");
-  } catch (hillsErr: any) {
-    console.error("[STARTUP] Hillsborough Records pipeline failed to start (non-fatal):", hillsErr?.message);
-  }
+  // Hillsborough pipelines disabled — outside SW Florida coverage area
+  // Uncomment to re-enable:
+  // try {
+  //   const { startHillsboroughRecordsScheduler } = await import("./hillsboroughRecordsPipeline");
+  //   startHillsboroughRecordsScheduler();
+  //   console.log("[STARTUP] ✅ Hillsborough Official Records pipeline started — lis pendens + judgments (daily at 06:00 ET)");
+  // } catch (hillsErr: any) {
+  //   console.error("[STARTUP] Hillsborough Records pipeline failed to start (non-fatal):", hillsErr?.message);
+  // }
 
-  try {
-    const { startHillsboroughFilingsScheduler } = await import("./hillsboroughCourtFilingsPipeline");
-    startHillsboroughFilingsScheduler();
-    console.log("[STARTUP] ✅ Hillsborough Court Filings pipeline started — divorce/custody/probate/foreclosure (daily at 07:00 ET)");
-  } catch (hillsFilingsErr: any) {
-    console.error("[STARTUP] Hillsborough Filings pipeline failed to start (non-fatal):", hillsFilingsErr?.message);
-  }
+  // try {
+  //   const { startHillsboroughFilingsScheduler } = await import("./hillsboroughCourtFilingsPipeline");
+  //   startHillsboroughFilingsScheduler();
+  //   console.log("[STARTUP] ✅ Hillsborough Court Filings pipeline started — divorce/custody/probate/foreclosure (daily at 07:00 ET)");
+  // } catch (hillsFilingsErr: any) {
+  //   console.error("[STARTUP] Hillsborough Filings pipeline failed to start (non-fatal):", hillsFilingsErr?.message);
+  // }
 
   try {
     const { startRetroSkipTraceScheduler } = await import("./retroSkipTrace");
