@@ -304,36 +304,328 @@ async function runZillowScraper(token: string): Promise<void> {
   console.log(`[ZILLOW] Done — ${totalUpserted} property contacts upserted, ${totalErrors} errors`);
 }
 
+// ── 3. YELLOWPAGES SCRAPER ────────────────────────────────────────────────────
+// Actor: petr_cermak~yellow-pages-scraper
+
+const YPAGES_ACTOR = "petr_cermak~yellow-pages-scraper";
+
+const YPAGES_SEARCH_TARGETS: Array<{ category: string; vertical: string; tags: string[] }> = [
+  { category: "barbershops",             vertical: "service_industry", tags: ["barbershop",   "yellowpages"] },
+  { category: "beauty-salons",           vertical: "service_industry", tags: ["hair-salon",   "yellowpages"] },
+  { category: "nail-salons",             vertical: "service_industry", tags: ["nail-salon",   "yellowpages"] },
+  { category: "day-spas",               vertical: "service_industry", tags: ["spa",           "yellowpages"] },
+  { category: "roofing-contractors",    vertical: "home_services",    tags: ["roofing",       "yellowpages"] },
+  { category: "plumbers",               vertical: "home_services",    tags: ["plumbing",      "yellowpages"] },
+  { category: "electricians",           vertical: "home_services",    tags: ["electrical",    "yellowpages"] },
+  { category: "air-conditioning-heating-contractors", vertical: "home_services", tags: ["hvac", "yellowpages"] },
+  { category: "insurance",              vertical: "insurance",        tags: ["insurance",     "yellowpages"] },
+  { category: "attorneys",             vertical: "legal",             tags: ["attorney",      "yellowpages"] },
+  { category: "auto-body-repair-painting", vertical: "auto_services", tags: ["auto-body",   "yellowpages"] },
+  { category: "landscaping-lawn-services", vertical: "home_services", tags: ["landscaping",  "yellowpages"] },
+];
+
+const YPAGES_FL_LOCATIONS = ["Fort Myers, FL", "Tampa, FL", "Miami, FL", "Orlando, FL", "Jacksonville, FL", "Sarasota, FL"];
+
+interface YPagesResult {
+  name?: string;
+  businessName?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  website?: string;
+  categories?: string[];
+}
+
+async function runYellowPagesScraper(token: string): Promise<void> {
+  const accounts = await db.select({ id: subAccounts.id }).from(subAccounts);
+  if (!accounts.length) return;
+
+  let totalUpserted = 0;
+  let totalErrors   = 0;
+
+  for (const target of YPAGES_SEARCH_TARGETS) {
+    for (const location of YPAGES_FL_LOCATIONS) {
+      try {
+        const runId     = await startApifyRun(token, YPAGES_ACTOR, {
+          search:   target.category,
+          location: location,
+          maxItems: 50,
+        });
+        const datasetId = await waitForRun(token, runId, 6 * 60_000);
+        const results   = await fetchDataset<YPagesResult>(token, datasetId, 500);
+
+        for (const biz of results) {
+          const name  = biz.businessName ?? biz.name;
+          const phone = (biz.phone ?? "").replace(/\D/g, "");
+          if (!name || phone.length < 10) continue;
+
+          for (const account of accounts) {
+            await upsertContact({
+              subAccountId:     account.id,
+              firstName:        name,
+              lastName:         "",
+              company:          name,
+              phone:            phone,
+              address:          biz.address ?? "",
+              city:             biz.city ?? location.split(",")[0],
+              state:            biz.state ?? "FL",
+              zip:              biz.zip ?? "",
+              source:           CONTACT_SOURCES.APIFY,
+              sourceExternalId: `YPAGES-${target.vertical}-${phone}:acct${account.id}`,
+              leadVertical:     target.vertical,
+              leadSubtype:      target.category,
+              tags:             target.tags,
+              notes:            `YellowPages — ${target.category} | ${location}`,
+            });
+            totalUpserted++;
+          }
+        }
+
+        console.log(`[YPAGES] ✅ ${target.category} in ${location}: ${results.length} results`);
+      } catch (err: any) {
+        console.error(`[YPAGES] ${target.category}/${location} failed: ${err.message}`);
+        totalErrors++;
+      }
+      await new Promise(r => setTimeout(r, 2_000));
+    }
+  }
+
+  recordApifyRun(totalUpserted, "yellowpages-scraper", totalErrors > 0 ? `${totalErrors} errors` : null);
+  console.log(`[YPAGES] Done — ${totalUpserted} contacts upserted, ${totalErrors} errors`);
+}
+
+// ── 4. APOLLO-LIKE LEADS SCRAPER ──────────────────────────────────────────────
+// Actor: pipelinelabs~leads-scraper (300M+ company/contact DB, $1/1K leads)
+
+const APOLLO_ACTOR = "pipelinelabs~leads-scraper";
+
+const APOLLO_SEARCH_TARGETS: Array<{ jobTitle: string; industry: string; vertical: string; tags: string[] }> = [
+  { jobTitle: "Insurance Agent",         industry: "Insurance",          vertical: "insurance",      tags: ["insurance-agent",  "apollo"] },
+  { jobTitle: "Owner",                   industry: "Construction",       vertical: "home_services",  tags: ["contractor",       "apollo"] },
+  { jobTitle: "Owner",                   industry: "Real Estate",        vertical: "home_services",  tags: ["realtor",          "apollo"] },
+  { jobTitle: "Attorney",                industry: "Law Practice",       vertical: "legal",          tags: ["attorney",         "apollo"] },
+  { jobTitle: "Owner",                   industry: "Consumer Services",  vertical: "service_industry", tags: ["service-owner",  "apollo"] },
+  { jobTitle: "Operations Manager",      industry: "Staffing & Recruiting", vertical: "commercial_insurance", tags: ["staffing", "apollo"] },
+  { jobTitle: "Owner",                   industry: "Automotive",         vertical: "auto_services",  tags: ["auto-owner",       "apollo"] },
+  { jobTitle: "Practice Manager",        industry: "Medical Practice",   vertical: "service_industry", tags: ["medical",        "apollo"] },
+];
+
+interface ApolloResult {
+  firstName?: string;
+  first_name?: string;
+  lastName?: string;
+  last_name?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  company?: string;
+  companyName?: string;
+  title?: string;
+  jobTitle?: string;
+  city?: string;
+  state?: string;
+  industry?: string;
+  linkedin?: string;
+}
+
+async function runApolloScraper(token: string): Promise<void> {
+  const accounts = await db.select({ id: subAccounts.id }).from(subAccounts);
+  if (!accounts.length) return;
+
+  let totalUpserted = 0;
+  let totalErrors   = 0;
+
+  for (const target of APOLLO_SEARCH_TARGETS) {
+    try {
+      console.log(`[APOLLO] Scraping: ${target.jobTitle} in ${target.industry} (FL)`);
+
+      const runId     = await startApifyRun(token, APOLLO_ACTOR, {
+        jobTitles:  [target.jobTitle],
+        industries: [target.industry],
+        locations:  ["Florida, United States"],
+        maxResults: 100,
+      });
+      const datasetId = await waitForRun(token, runId, 8 * 60_000);
+      const results   = await fetchDataset<ApolloResult>(token, datasetId, 500);
+
+      for (const person of results) {
+        const firstName = person.firstName ?? person.first_name ?? person.name?.split(" ")[0] ?? "";
+        const lastName  = person.lastName  ?? person.last_name  ?? person.name?.split(" ").slice(1).join(" ") ?? "";
+        const phone     = (person.phone ?? "").replace(/\D/g, "");
+        const email     = person.email ?? "";
+        const company   = person.company ?? person.companyName ?? "";
+
+        if (!firstName || (!phone && !email)) continue;
+
+        for (const account of accounts) {
+          await upsertContact({
+            subAccountId:     account.id,
+            firstName,
+            lastName,
+            company,
+            phone:            phone || undefined,
+            email:            email || undefined,
+            city:             person.city ?? "",
+            state:            person.state ?? "FL",
+            source:           CONTACT_SOURCES.APIFY,
+            sourceExternalId: `APOLLO-${(phone || email || crypto.randomUUID().slice(0, 8))}:acct${account.id}`,
+            leadVertical:     target.vertical,
+            leadSubtype:      target.jobTitle.toLowerCase().replace(/\s+/g, "_"),
+            tags:             target.tags,
+            notes:            `Apollo — ${person.title ?? target.jobTitle} at ${company} | ${target.industry}`,
+          });
+          totalUpserted++;
+        }
+      }
+
+      console.log(`[APOLLO] ✅ ${target.jobTitle}/${target.industry}: ${results.length} leads`);
+    } catch (err: any) {
+      console.error(`[APOLLO] ${target.jobTitle}/${target.industry} failed: ${err.message}`);
+      totalErrors++;
+    }
+    await new Promise(r => setTimeout(r, 3_000));
+  }
+
+  recordApifyRun(totalUpserted, "apollo-leads-scraper", totalErrors > 0 ? `${totalErrors} errors` : null);
+  console.log(`[APOLLO] Done — ${totalUpserted} contacts upserted, ${totalErrors} errors`);
+}
+
+// ── 5. GOOGLE SEARCH SCRAPER ──────────────────────────────────────────────────
+// Actor: apify~google-search-scraper — scrapes organic search results,
+// extracts business URLs then enriches with contact details
+
+const GSEARCH_ACTOR = "apify~google-search-scraper";
+
+const GSEARCH_QUERIES: Array<{ query: string; vertical: string; tags: string[] }> = [
+  { query: "workers compensation attorney Florida",      vertical: "legal",          tags: ["workers-comp", "attorney", "google-search"] },
+  { query: "personal injury lawyer Tampa Fort Myers",    vertical: "legal",          tags: ["personal-injury", "attorney", "google-search"] },
+  { query: "commercial insurance broker Florida",        vertical: "insurance",      tags: ["commercial-insurance", "broker", "google-search"] },
+  { query: "roofing company Fort Myers Florida",         vertical: "home_services",  tags: ["roofing", "google-search"] },
+  { query: "HVAC company Tampa Florida",                 vertical: "home_services",  tags: ["hvac", "google-search"] },
+  { query: "barbershop Fort Myers Naples Florida",       vertical: "service_industry", tags: ["barbershop", "google-search"] },
+  { query: "hair salon Sarasota Bradenton Florida",      vertical: "service_industry", tags: ["hair-salon", "google-search"] },
+  { query: "med spa Orlando Miami Florida",              vertical: "service_industry", tags: ["med-spa", "google-search"] },
+  { query: "auto body shop Jacksonville Miami Florida",  vertical: "auto_services",  tags: ["auto-body", "google-search"] },
+  { query: "plumbing company Southwest Florida",        vertical: "home_services",  tags: ["plumbing", "google-search"] },
+];
+
+interface GSearchResult {
+  title?: string;
+  url?: string;
+  domain?: string;
+  description?: string;
+  phone?: string;
+  displayedUrl?: string;
+}
+
+async function runGoogleSearchScraper(token: string): Promise<void> {
+  const accounts = await db.select({ id: subAccounts.id }).from(subAccounts);
+  if (!accounts.length) return;
+
+  let totalUpserted = 0;
+  let totalErrors   = 0;
+
+  for (const target of GSEARCH_QUERIES) {
+    try {
+      console.log(`[GSEARCH] Scraping: "${target.query}"`);
+
+      const runId     = await startApifyRun(token, GSEARCH_ACTOR, {
+        queries:           target.query,
+        resultsPerPage:    20,
+        maxPagesPerQuery:  2,
+        languageCode:      "en",
+        countryCode:       "us",
+        includeUnfilteredResults: false,
+      });
+      const datasetId = await waitForRun(token, runId, 5 * 60_000);
+      const results   = await fetchDataset<GSearchResult>(token, datasetId, 200);
+
+      for (const result of results) {
+        const name  = result.title;
+        const phone = (result.phone ?? "").replace(/\D/g, "");
+        const url   = result.url ?? result.displayedUrl ?? "";
+
+        // Skip directories, social media, Wikipedia
+        if (!name) continue;
+        const skipDomains = ["yelp.com", "yellowpages.com", "facebook.com", "linkedin.com", "wikipedia.org", "bbb.org"];
+        if (skipDomains.some(d => url.includes(d))) continue;
+
+        for (const account of accounts) {
+          await upsertContact({
+            subAccountId:     account.id,
+            firstName:        name,
+            lastName:         "",
+            company:          name,
+            phone:            phone.length >= 10 ? phone : undefined,
+            source:           CONTACT_SOURCES.APIFY,
+            sourceExternalId: `GSEARCH-${target.vertical}-${(url || name).slice(0, 60)}:acct${account.id}`,
+            leadVertical:     target.vertical,
+            leadSubtype:      "google_search",
+            tags:             target.tags,
+            notes:            `Google Search — "${target.query}" | ${url}`,
+          });
+          totalUpserted++;
+        }
+      }
+
+      console.log(`[GSEARCH] ✅ "${target.query}": ${results.length} results`);
+    } catch (err: any) {
+      console.error(`[GSEARCH] "${target.query}" failed: ${err.message}`);
+      totalErrors++;
+    }
+    await new Promise(r => setTimeout(r, 2_000));
+  }
+
+  recordApifyRun(totalUpserted, "google-search-scraper", totalErrors > 0 ? `${totalErrors} errors` : null);
+  console.log(`[GSEARCH] Done — ${totalUpserted} contacts upserted, ${totalErrors} errors`);
+}
+
 // ── Schedulers ────────────────────────────────────────────────────────────────
 
 export function startApifyLeadScrapers(): void {
   const token = resolveApifyToken();
   if (!token) {
-    console.warn("[APIFY-LEADS] APIFY_API_KEY not set — Google Maps + Zillow scrapers disabled");
+    console.warn("[APIFY-LEADS] APIFY_API_KEY not set — all Apify lead scrapers disabled");
     return;
   }
 
-  console.log("[APIFY-LEADS] Starting Google Maps + Zillow lead scrapers");
+  console.log("[APIFY-LEADS] Starting Google Maps + YellowPages + Apollo + Google Search + Zillow scrapers");
 
-  // Google Maps: initial run after 2 min, then every 12h
+  // Google Maps: 2 min delay, every 12h
   setTimeout(() => {
-    runGoogleMapsScraper(token).catch(err =>
-      console.error("[GMAPS] Initial run failed:", err.message)
-    );
+    runGoogleMapsScraper(token).catch(err => console.error("[GMAPS] Initial run failed:", err.message));
   }, 2 * 60_000);
-
   setInterval(() => {
-    runGoogleMapsScraper(token).catch(err =>
-      console.error("[GMAPS] Scheduled run failed:", err.message)
-    );
+    runGoogleMapsScraper(token).catch(err => console.error("[GMAPS] Scheduled run failed:", err.message));
   }, 12 * 60 * 60_000);
 
-  // Zillow: initial run after 5 min (stagger from Maps), then every 24h
+  // YellowPages: 8 min delay, every 18h
   setTimeout(() => {
-    runZillowScraper(token).catch(err =>
-      console.error("[ZILLOW] Initial run failed:", err.message)
-    );
-  }, 5 * 60_000);
+    runYellowPagesScraper(token).catch(err => console.error("[YPAGES] Initial run failed:", err.message));
+  }, 8 * 60_000);
+  setInterval(() => {
+    runYellowPagesScraper(token).catch(err => console.error("[YPAGES] Scheduled run failed:", err.message));
+  }, 18 * 60 * 60_000);
+
+  // Apollo leads: 15 min delay, every 24h
+  setTimeout(() => {
+    runApolloScraper(token).catch(err => console.error("[APOLLO] Initial run failed:", err.message));
+  }, 15 * 60_000);
+  setInterval(() => {
+    runApolloScraper(token).catch(err => console.error("[APOLLO] Scheduled run failed:", err.message));
+  }, 24 * 60 * 60_000);
+
+  // Google Search: 20 min delay, every 24h
+  setTimeout(() => {
+    runGoogleSearchScraper(token).catch(err => console.error("[GSEARCH] Initial run failed:", err.message));
+  }, 20 * 60_000);
+  setInterval(() => {
+    runGoogleSearchScraper(token).catch(err => console.error("[GSEARCH] Scheduled run failed:", err.message));
+  }, 24 * 60 * 60_000);
+
+  // Zillow: 5 min delay, every 24h
 
   setInterval(() => {
     runZillowScraper(token).catch(err =>
