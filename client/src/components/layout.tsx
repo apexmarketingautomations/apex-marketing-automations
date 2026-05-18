@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Car } from "lucide-react";
 import { Link, useLocation } from "wouter";
-import { MessageSquare, GitFork, Scale, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target, Lock, Plug, Activity, Menu, X, ContactRound, MapPin, BellRing, FlaskConical, Home, Brain, PenTool, Zap, Sparkles } from "lucide-react";
+import { MessageSquare, GitFork, Scale, Bot, Briefcase, LayoutTemplate, Globe, Megaphone, Phone, TrendingUp, Settings, ArrowLeft, Search, Rocket, Star, DollarSign, Link2, LogOut, Store, Users, Shield, CreditCard, ChevronDown, Plus, Building2, History, Satellite, Building, BarChart3, Kanban, CalendarDays, Mail, Palette, Webhook, FileBarChart, Instagram, Target, Lock, Plug, Activity, Menu, X, ContactRound, MapPin, BellRing, FlaskConical, Home, Brain, PenTool, Zap, Sparkles, Umbrella, Scissors, Wrench, PawPrint } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CommandMenu } from "@/components/command-menu";
@@ -49,6 +49,22 @@ const navSections = [
       { href: "/sentinel?tab=home", icon: Home, label: "Home & Property", requiredFeature: "sentinel" },
       { href: "/sentinel?tab=legal", icon: Scale, label: "Legal Intel", requiredFeature: "sentinel" },
       { href: "/sentinel?tab=distribution", icon: GitFork, label: "Lead Routing", requiredFeature: "sentinel" },
+    ],
+  },
+  {
+    label: "INSURANCE",
+    items: [
+      { href: "/insurance", icon: Umbrella, label: "Insurance Hub" },
+      { href: "/insurance/funnel", icon: GitFork, label: "Insurance Funnel" },
+    ],
+  },
+  {
+    label: "SERVICE LEADS",
+    items: [
+      { href: "/home-services", icon: Wrench, label: "Home Services" },
+      { href: "/medspa", icon: Sparkles, label: "Med Spa" },
+      { href: "/pet-services", icon: PawPrint, label: "Pet Services" },
+      { href: "/niches", icon: Scissors, label: "All Niches" },
     ],
   },
   {
