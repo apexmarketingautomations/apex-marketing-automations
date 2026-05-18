@@ -1507,6 +1507,13 @@ export default function SiteBuilder() {
   const [collabEmail, setCollabEmail] = useState("");
   const [loadingCollabs, setLoadingCollabs] = useState(false);
 
+  // ── Phase + design state ──────────────────────────────────────────────
+  const [phase, setPhase] = useState<"design" | "build">("design");
+  const [activeCategory, setActiveCategory] = useState("All");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [showAllExamples, setShowAllExamples] = useState(false);
+  const [refinePrompt, setRefinePrompt] = useState("");
+
   useEffect(() => {
     fetchSavedSites();
   }, []);
@@ -1624,11 +1631,18 @@ export default function SiteBuilder() {
   };
 
   const handleGenerate = async (overridePrompt?: string) => {
-    const text = overridePrompt || prompt.trim();
+    // Inject selected template's visual DNA into the prompt
+    const activeTemplate = SITE_TEMPLATES.find(t => t.id === selectedTemplateId);
+    let rawText = overridePrompt || prompt.trim();
+    let text = rawText;
+    if (activeTemplate && !overridePrompt) {
+      const dna = `Style: ${activeTemplate.description}. Primary color: ${activeTemplate.color}. Industry: ${activeTemplate.industry}.`;
+      text = rawText ? `${rawText}. ${dna}` : `${activeTemplate.name} — ${dna} Build a full ${activeTemplate.industry} website.`;
+    }
     if (!text) return;
     setIsGenerating(true);
-    setLastPrompt(text);
-    if (!overridePrompt) setHistory((prev) => [...prev, text]);
+    setLastPrompt(rawText || text);
+    if (!overridePrompt) setHistory((prev) => [...prev, rawText || text]);
 
     try {
       // Check if vibe mode
@@ -1665,6 +1679,8 @@ export default function SiteBuilder() {
       }
       markMilestoneComplete("generate");
       markMilestoneComplete("preview");
+      setPhase("build");
+      setRefinePrompt("");
     } catch (err: any) {
       toast({
         title: "Generation Failed",
@@ -2201,7 +2217,7 @@ export default function SiteBuilder() {
     setLastPrompt(`Template: ${template.name}`);
     setHistory((prev) => [...prev, `Loaded template: ${template.name}`]);
     setCurrentSiteId(null);
-    setShowTemplates(false);
+    setPhase("build");
     markMilestoneComplete("generate");
     markMilestoneComplete("preview");
     toast({ title: "Template Loaded", description: `"${template.name}" is ready to customize.` });
@@ -2267,225 +2283,464 @@ export default function SiteBuilder() {
     QR_CODE: QrCodeSection,
   };
 
+  // ── Computed values ─────────────────────────────────────────────────────
+  const templateCategories = useMemo(() => {
+    return ["All", ...Array.from(new Set(SITE_TEMPLATES.map(t => t.industry)))];
+  }, []);
+
+  const filteredTemplates = useMemo(() => {
+    if (activeCategory === "All") return SITE_TEMPLATES;
+    return SITE_TEMPLATES.filter(t => t.industry === activeCategory);
+  }, [activeCategory, SITE_TEMPLATES]);
+
+  const selectedTemplate = useMemo(() => {
+    return SITE_TEMPLATES.find(t => t.id === selectedTemplateId) || null;
+  }, [selectedTemplateId, SITE_TEMPLATES]);
+
+  const EXAMPLE_PROMPTS = [
+    { label: "💪 Gym landing page", prompt: "High-energy gym landing page, aggressive red/black theme, bold typography, 90-day transformation guarantee" },
+    { label: "✨ Luxury med spa", prompt: "Luxury med spa funnel, gold and black theme, botox and fillers, premium aesthetic" },
+    { label: "⚖️ Law firm", prompt: "Professional law firm website, deep navy blue, personal injury and estate planning, free consultation CTA" },
+    { label: "🍽️ Restaurant", prompt: "Upscale farm-to-table restaurant, warm amber tones, wood-fired menu, reservation booking" },
+    { label: "🏠 Real estate agency", prompt: "Modern real estate agency, emerald green, luxury property listings, schedule a viewing" },
+    { label: "🌿 Yoga studio", prompt: "Zen yoga and meditation studio, natural greens, all levels welcome, first class free" },
+    { label: "🎯 Business coach", prompt: "Business coaching landing page, bold purple authority, 7-figure framework, strategy call CTA" },
+    { label: "🦷 Dental practice", prompt: "Friendly family dental practice, clean blue and white, new patient special, easy booking" },
+  ];
+
+  const detectedIntent = useMemo(() => {
+    if (!prompt.trim()) return null;
+    const p = prompt.toLowerCase();
+    if (p.match(/gym|fitness|workout|muscle|training|crossfit/)) return { label: "Fitness", icon: "💪", color: "#ef4444" };
+    if (p.match(/spa|beauty|glow|aesthetic|medspa|med spa|botox/)) return { label: "Beauty & Wellness", icon: "✨", color: "#d4a574" };
+    if (p.match(/lawyer|attorney|law firm|legal|injury|counsel/)) return { label: "Legal", icon: "⚖️", color: "#3b82f6" };
+    if (p.match(/restaurant|food|dining|cafe|kitchen|bistro|menu/)) return { label: "Restaurant", icon: "🍽️", color: "#f59e0b" };
+    if (p.match(/real estate|realtor|property|homes|listings|realty/)) return { label: "Real Estate", icon: "🏠", color: "#10b981" };
+    if (p.match(/yoga|wellness|meditation|zen|mindful/)) return { label: "Wellness", icon: "🌿", color: "#a3e635" };
+    if (p.match(/coach|coaching|mentor|consult|strategy|business/)) return { label: "Coaching", icon: "🎯", color: "#8b5cf6" };
+    if (p.match(/dental|dentist|teeth|smile|orthodon/)) return { label: "Dental", icon: "🦷", color: "#06b6d4" };
+    if (p.match(/salon|hair|barber|stylist|cut|color/)) return { label: "Salon", icon: "✂️", color: "#ec4899" };
+    if (p.match(/auto|car|detail|vehicle|mechanic|ceramic/)) return { label: "Automotive", icon: "🚗", color: "#22d3ee" };
+    if (p.match(/luxury|premium|exclusive|elite|high.end/)) return { label: "Luxury", icon: "💎", color: "#d4a574" };
+    if (p.match(/tech|saas|software|startup|app|platform/)) return { label: "Tech", icon: "⚡", color: "#6366f1" };
+    return null;
+  }, [prompt]);
+
   return (
     <div className="min-h-screen bg-[#030014] text-white flex flex-col md:flex-row font-sans relative">
       <div className="fixed inset-0 bg-grid z-0 pointer-events-none" />
       <div className="fixed top-0 left-0 w-full h-[500px] bg-gradient-to-b from-indigo-900/10 to-transparent pointer-events-none z-0" />
 
-      <div className="w-full md:w-[400px] border-r border-white/10 flex flex-col glass-panel z-10 md:min-h-screen relative">
-        <div className="p-6 border-b border-white/5">
-          <h1 className="text-xl font-bold flex items-center gap-2 glow-text">
-            <LayoutTemplate className="text-indigo-400 drop-shadow-[0_0_8px_rgba(129,140,248,0.5)]" />
-            Site Architect
-          </h1>
-          <p className="text-xs text-slate-300 mt-1 font-mono">
-            AI-POWERED // DESCRIBE &rarr; GENERATE
-          </p>
-        </div>
+      {/* ── Left Panel ─────────────────────────────────────────────────── */}
+      <div className="w-full md:w-[420px] border-r border-white/10 flex flex-col z-10 md:min-h-screen relative" style={{ background: "linear-gradient(180deg, #0c0c1e 0%, #060610 100%)" }}>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {history.length === 0 && (
-            <div className="text-center text-slate-300 mt-10 text-sm p-4 border border-dashed border-white/10 rounded-xl glass">
-              <p className="mb-3">Try prompts like:</p>
-              <ul className="space-y-2 text-indigo-400">
-                <li>
-                  <button
-                    className="hover:underline text-left"
-                    onClick={() =>
-                      setPrompt(
-                        "Gym landing page, aggressive red/black theme"
-                      )
-                    }
-                    data-testid="button-prompt-gym"
-                  >
-                    "Gym landing page, aggressive style"
-                  </button>
-                </li>
-                <li>
-                  <button
-                    className="hover:underline text-left"
-                    onClick={() =>
-                      setPrompt(
-                        "Luxury med spa funnel, gold and black theme"
-                      )
-                    }
-                    data-testid="button-prompt-luxe"
-                  >
-                    "Luxury med spa, gold & black"
-                  </button>
-                </li>
-                <li>
-                  <button
-                    className="hover:underline text-left"
-                    onClick={() =>
-                      setPrompt(
-                        "Dentist funnel, clean blue/white, friendly"
-                      )
-                    }
-                    data-testid="button-prompt-dental"
-                  >
-                    "Dentist funnel, clean & friendly"
-                  </button>
-                </li>
-              </ul>
-              <div className="mt-4 pt-3 border-t border-white/10 space-y-2">
-                <button
-                  onClick={() => setShowTemplates(true)}
-                  className="flex items-center gap-2 mx-auto text-indigo-400 hover:text-indigo-300 transition-colors"
-                  data-testid="button-browse-templates-empty"
-                >
-                  <Palette size={16} />
-                  Or browse Template Gallery
-                </button>
-                <button
-                  onClick={handleStartWithCode}
-                  className="flex items-center gap-2 mx-auto text-emerald-400 hover:text-emerald-300 transition-colors"
-                  data-testid="button-start-with-code-empty"
-                >
-                  <Code2 size={16} />
-                  Or build it from scratch with code
-                </button>
-              </div>
-            </div>
-          )}
-          {history.map((h, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="glass p-3 rounded-lg text-sm"
-            >
-              <span className="opacity-50 text-xs block mb-1 font-mono">YOU</span>
-              {h}
-            </motion.div>
-          ))}
-          {isGenerating && (
-            <div className="flex items-center gap-2 text-indigo-400 text-sm animate-pulse">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Generating layout & copy...
-            </div>
-          )}
-          {siteData && !isGenerating && history.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-indigo-500/10 p-3 rounded-lg text-sm border border-indigo-500/20 glow-box"
-            >
-              <span className="opacity-50 text-xs block mb-1 font-mono">AI</span>
-              <div className="flex items-center gap-2 text-indigo-300">
-                <CheckCircle2 className="h-4 w-4" />
-                Site generated with {activeSections.length} sections{isMultiPage ? ` across ${multiPageData?.pages.length} pages` : ""}.
-              </div>
-              <p className="text-xs text-slate-200 mt-1">
-                Theme: {siteData.theme.font} /{" "}
-                <span
-                  className="inline-block w-3 h-3 rounded-full align-middle"
-                  style={{ backgroundColor: siteData.theme.primary }}
-                />{" "}
-                {siteData.theme.primary}
-              </p>
-            </motion.div>
-          )}
-        </div>
-
-
-        {/* Vibe Site Panel Modal */}
-        {showVibePanel && (
-          <VibeSitePanel
-            onClose={() => setShowVibePanel(false)}
-            onGenerate={(richPrompt, design) => {
-              setShowVibePanel(false);
-              handleGenerate(richPrompt);
-            }}
-            selectedTheme={selectedVibeTheme}
-            onThemeChange={setSelectedVibeTheme}
-            isGenerating={isGenerating}
-          />
-        )}
-
-        <div className="p-4 bg-black/40 border-t border-white/5 backdrop-blur-md space-y-3">
-          <TutorialCenterCompact />
-
-          {/* ── Mode Toggle ── */}
-          <div className="flex items-center gap-2">
-            <div className="flex items-center bg-white/5 border border-white/10 rounded-xl p-1 gap-1">
+        {/* Header */}
+        <div className="p-5 border-b border-white/[0.06] flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5">
+            {phase === "build" && (
               <button
-                onClick={() => setVibeMode(false)}
-                className={"px-3 py-1.5 rounded-lg text-xs font-bold transition-all " + (!vibeMode ? "bg-indigo-600 text-white shadow" : "text-slate-500 hover:text-slate-300")}
+                onClick={() => { setPhase("design"); }}
+                className="p-1.5 rounded-lg hover:bg-white/10 text-slate-500 hover:text-white transition-colors"
+                title="New site"
+                data-testid="button-back-to-design"
               >
-                ⚡ Standard
-              </button>
-              <button
-                onClick={() => { setVibeMode(true); setShowVibePanel(true); }}
-                className={"px-3 py-1.5 rounded-lg text-xs font-bold transition-all " + (vibeMode ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow" : "text-slate-500 hover:text-slate-300")}
-              >
-                ✨ Vibe Mode
-              </button>
-            </div>
-            {vibeMode && (
-              <button
-                onClick={() => setShowVibePanel(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-300 text-xs font-bold hover:bg-purple-500/30 transition-all"
-              >
-                ✦ Design Panel
+                <ArrowRight size={14} className="rotate-180" />
               </button>
             )}
-          </div>
-
-          {/* Vibe mode active badge */}
-          {vibeMode && (
-            <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20">
-              <span className="text-[10px] text-purple-300 font-bold">✨ VIBE MODE — Click "Design Panel" to customize</span>
-              <span className="text-[9px] px-2 py-0.5 rounded bg-white/10 text-slate-400">{selectedVibeTheme.replace(/-/g," ")}</span>
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0" style={{ background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)" }}>
+              <LayoutTemplate size={15} className="text-white" />
             </div>
-          )}
-
-          {/* Vibe mode badge */}
-          {vibeMode && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/20">
-              <span className="text-[10px] text-purple-300 font-bold">✨ VIBE MODE ON</span>
-              <span className="text-[10px] text-slate-500">— Generates 3D animated Three.js site with {selectedVibeTheme.replace(/-/g," ")} theme</span>
+            <div>
+              <h1 className="text-sm font-black text-white tracking-tight leading-tight">Site Architect</h1>
+              <p className="text-[10px] text-slate-500 font-mono leading-tight">
+                {phase === "design" ? "DESCRIBE → GENERATE" : "SITE READY — REFINE OR PUBLISH"}
+              </p>
             </div>
+          </div>
+          {phase === "build" && siteData && (
+            <button
+              onClick={() => { setSaveName(""); setShowSaveDialog(true); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600/20 border border-indigo-500/30 text-indigo-300 text-xs font-bold hover:bg-indigo-600/30 transition-all"
+              data-testid="button-save-header"
+            >
+              <Save size={12} /> Save
+            </button>
           )}
-
-          {/* Prompt input */}
-          <div className="flex gap-2">
-            <Input
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder={vibeMode ? "Describe your business for a 3D animated vibe site..." : "Describe the website you want to build..."}
-              className="bg-white/5 border-white/10 focus:border-indigo-500"
-              onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
-              data-testid="input-prompt"
-            />
-            <Button
-              onClick={() => handleGenerate()}
-              disabled={isGenerating || !prompt.trim()}
-              className={vibeMode ? "bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 shadow-lg shadow-purple-500/20" : "bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-500/20"}
-              data-testid="button-generate"
-            >
-              <Send size={18} />
-            </Button>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => setShowTemplates(true)}
-              className="flex items-center justify-center gap-2 text-xs text-slate-200 hover:text-indigo-400 transition-colors py-1.5 rounded-lg border border-dashed border-white/10 hover:border-indigo-500/30"
-              data-testid="button-open-templates"
-            >
-              <Palette size={14} />
-              Templates
-            </button>
-            <button
-              onClick={handleStartWithCode}
-              className="flex items-center justify-center gap-2 text-xs text-slate-200 hover:text-emerald-400 transition-colors py-1.5 rounded-lg border border-dashed border-white/10 hover:border-emerald-500/30"
-              data-testid="button-start-with-code"
-            >
-              <Code2 size={14} />
-              Build with Code
-            </button>
-          </div>
         </div>
+
+        <AnimatePresence mode="wait">
+          {phase === "design" ? (
+            /* ── DESIGN PHASE ──────────────────────────────────────────── */
+            <motion.div key="design" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 overflow-y-auto flex flex-col">
+
+              {/* Prompt hero */}
+              <div className="p-4 space-y-3 shrink-0">
+                {/* Intent badge */}
+                <AnimatePresence>
+                  {detectedIntent && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold"
+                      style={{ background: `${detectedIntent.color}18`, color: detectedIntent.color, border: `1px solid ${detectedIntent.color}35` }}
+                    >
+                      <span>{detectedIntent.icon}</span> {detectedIntent.label} detected
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <div className="relative">
+                  <textarea
+                    value={prompt}
+                    onChange={e => setPrompt(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleGenerate(); }}
+                    placeholder={"Describe the website you want to build…\ne.g. Luxury med spa, gold & black, booking form"}
+                    rows={4}
+                    maxLength={2000}
+                    className="w-full bg-white/[0.04] border border-white/10 rounded-2xl px-4 py-3.5 text-white text-sm placeholder-slate-600 resize-none outline-none focus:border-indigo-500/60 focus:bg-white/[0.06] transition-all leading-relaxed"
+                    data-testid="input-prompt"
+                  />
+                  <div className="absolute bottom-3 right-3 text-[10px] text-slate-700 pointer-events-none">{prompt.length}/2000</div>
+                </div>
+
+                {/* Example chips */}
+                <div className="flex flex-wrap gap-1.5">
+                  {EXAMPLE_PROMPTS.slice(0, showAllExamples ? EXAMPLE_PROMPTS.length : 3).map((ex, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setPrompt(ex.prompt)}
+                      className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-white/[0.04] border border-white/10 text-slate-400 hover:text-white hover:bg-white/[0.08] hover:border-white/20 transition-all text-left"
+                    >
+                      {ex.label}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setShowAllExamples(v => !v)}
+                    className="px-2.5 py-1 rounded-full text-[11px] text-slate-600 hover:text-slate-400 transition-colors"
+                  >
+                    {showAllExamples ? "less" : `+${EXAMPLE_PROMPTS.length - 3} more`}
+                  </button>
+                </div>
+              </div>
+
+              {/* Templates section */}
+              <div className="border-t border-white/[0.06] flex flex-col flex-1 min-h-0">
+                <div className="px-4 pt-3 pb-2 flex items-center justify-between shrink-0">
+                  <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Templates</p>
+                  <button
+                    onClick={handleStartWithCode}
+                    className="flex items-center gap-1 text-[10px] text-emerald-500 hover:text-emerald-400 transition-colors"
+                    data-testid="button-start-with-code"
+                  >
+                    <Code2 size={10} /> Code editor
+                  </button>
+                </div>
+
+                {/* Category pills */}
+                <div className="px-4 pb-3 shrink-0">
+                  <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+                    {templateCategories.map(cat => (
+                      <button
+                        key={cat}
+                        onClick={() => setActiveCategory(cat)}
+                        className={`shrink-0 px-3 py-1 rounded-full text-[11px] font-bold transition-all ${activeCategory === cat ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/25" : "bg-white/[0.04] border border-white/10 text-slate-400 hover:text-white hover:border-white/20"}`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Template swatch grid */}
+                <div className="overflow-y-auto flex-1 px-4 pb-4">
+                  <div className="grid grid-cols-2 gap-2">
+                    {filteredTemplates.map((tmpl, i) => {
+                      const Icon = tmpl.icon;
+                      const isSelected = selectedTemplateId === tmpl.id;
+                      return (
+                        <motion.button
+                          key={tmpl.id}
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: Math.min(i * 0.03, 0.2) }}
+                          onClick={() => {
+                            setSelectedTemplateId(isSelected ? null : tmpl.id);
+                            if (!isSelected) handleLoadTemplate(tmpl);
+                          }}
+                          className={`relative rounded-2xl overflow-hidden border text-left transition-all duration-200 group ${isSelected ? "border-indigo-500 shadow-lg shadow-indigo-500/25 scale-[1.02]" : "border-white/10 hover:border-white/25 hover:scale-[1.01]"}`}
+                          data-testid={`template-swatch-${tmpl.id}`}
+                        >
+                          {/* Color gradient header */}
+                          <div
+                            className="h-[72px] relative flex items-center justify-center overflow-hidden"
+                            style={{ background: `linear-gradient(135deg, ${tmpl.color}ee 0%, ${tmpl.color}55 100%)` }}
+                          >
+                            <Icon size={32} className="opacity-20 text-white" />
+                            {/* Shimmer on hover */}
+                            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: "linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.08) 50%, transparent 60%)" }} />
+                            {isSelected && (
+                              <motion.div
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                className="absolute top-2 right-2 w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center shadow-lg"
+                              >
+                                <CheckCircle2 size={11} className="text-white" />
+                              </motion.div>
+                            )}
+                            {/* Color dot strip */}
+                            <div className="absolute bottom-2 left-2.5 flex gap-1">
+                              <div className="w-3 h-3 rounded-full border border-white/30" style={{ backgroundColor: tmpl.color }} />
+                              <div className="w-3 h-3 rounded-full border border-white/20" style={{ backgroundColor: tmpl.siteData?.theme?.bg || "#0a0a0a" }} />
+                            </div>
+                          </div>
+                          {/* Info */}
+                          <div className="px-2.5 py-2 bg-white/[0.03]">
+                            <p className="text-[12px] font-bold text-white leading-tight truncate">{tmpl.name}</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5 truncate">{tmpl.industry}</p>
+                          </div>
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Bottom bar — mode toggle + generate */}
+              <div className="shrink-0 p-4 border-t border-white/[0.06] space-y-3 bg-black/30 backdrop-blur-md">
+                <TutorialCenterCompact />
+
+                {/* Vibe Site Panel Modal */}
+                {showVibePanel && (
+                  <VibeSitePanel
+                    onClose={() => setShowVibePanel(false)}
+                    onGenerate={(richPrompt, design) => { setShowVibePanel(false); handleGenerate(richPrompt); }}
+                    selectedTheme={selectedVibeTheme}
+                    onThemeChange={setSelectedVibeTheme}
+                    isGenerating={isGenerating}
+                  />
+                )}
+
+                {/* Mode toggle */}
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center bg-white/5 border border-white/10 rounded-xl p-1 gap-1">
+                    <button
+                      onClick={() => setVibeMode(false)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${!vibeMode ? "bg-indigo-600 text-white shadow" : "text-slate-500 hover:text-slate-300"}`}
+                    >
+                      ⚡ Standard
+                    </button>
+                    <button
+                      onClick={() => { setVibeMode(true); setShowVibePanel(true); }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${vibeMode ? "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow" : "text-slate-500 hover:text-slate-300"}`}
+                    >
+                      ✨ Vibe
+                    </button>
+                  </div>
+                  {vibeMode && (
+                    <button
+                      onClick={() => setShowVibePanel(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/20 border border-purple-500/30 text-purple-300 text-xs font-bold hover:bg-purple-500/30 transition-all"
+                    >
+                      ✦ Design
+                    </button>
+                  )}
+                </div>
+
+                {/* Generate button */}
+                <motion.button
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => handleGenerate()}
+                  disabled={isGenerating || (!prompt.trim() && !selectedTemplateId)}
+                  className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl text-sm font-black text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed relative overflow-hidden"
+                  style={{
+                    background: selectedTemplate
+                      ? `linear-gradient(135deg, ${selectedTemplate.color}ee 0%, ${selectedTemplate.color}88 100%)`
+                      : vibeMode
+                        ? "linear-gradient(135deg, #7c3aed 0%, #db2777 100%)"
+                        : "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+                    boxShadow: selectedTemplate
+                      ? `0 0 32px ${selectedTemplate.color}35`
+                      : "0 0 32px rgba(99,102,241,0.25)",
+                  }}
+                  data-testid="button-generate"
+                >
+                  {isGenerating ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Sparkles size={16} />
+                  )}
+                  <span>
+                    {isGenerating
+                      ? "Building your site…"
+                      : selectedTemplate
+                        ? `Generate "${selectedTemplate.name}"`
+                        : "Generate Site"}
+                  </span>
+                </motion.button>
+              </div>
+            </motion.div>
+          ) : (
+            /* ── BUILD PHASE ──────────────────────────────────────────── */
+            <motion.div key="build" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex-1 overflow-y-auto flex flex-col">
+              <div className="flex-1 p-4 space-y-4">
+
+                {/* Generated site info */}
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-4 rounded-2xl border border-indigo-500/20 bg-indigo-500/5"
+                >
+                  <div className="flex items-center gap-2 text-indigo-300 text-sm font-bold mb-2">
+                    <CheckCircle2 size={15} /> Site Generated
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-slate-400">
+                    <span>{activeSections.length} sections</span>
+                    {isMultiPage && <span>· {multiPageData?.pages.length} pages</span>}
+                    <span>· {siteData?.theme?.font}</span>
+                    <span className="inline-flex items-center gap-1">
+                      · <span className="inline-block w-3 h-3 rounded-full border border-white/20" style={{ backgroundColor: siteData?.theme?.primary }} />
+                    </span>
+                  </div>
+                  {lastPrompt && (
+                    <p className="text-[11px] text-slate-600 mt-2 italic leading-relaxed">
+                      "{lastPrompt.slice(0, 80)}{lastPrompt.length > 80 ? "…" : ""}"
+                    </p>
+                  )}
+                </motion.div>
+
+                {/* Refine */}
+                <div>
+                  <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-2">Refine</p>
+                  <div className="space-y-2">
+                    <textarea
+                      value={refinePrompt}
+                      onChange={e => setRefinePrompt(e.target.value)}
+                      placeholder="Add more sections, change colors, update the copy…"
+                      rows={3}
+                      className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder-slate-600 resize-none outline-none focus:border-indigo-500/50 transition-all"
+                      onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleGenerate(refinePrompt || undefined); }}
+                    />
+                    <button
+                      onClick={() => { if (refinePrompt.trim()) { handleGenerate(refinePrompt); } else handleRegenerate(); }}
+                      disabled={isGenerating}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold text-white transition-all disabled:opacity-40"
+                      style={{ background: "linear-gradient(135deg, #6366f1, #8b5cf6)" }}
+                      data-testid="button-refine-generate"
+                    >
+                      {isGenerating ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />}
+                      {isGenerating ? "Generating…" : refinePrompt.trim() ? "Refine Site" : "Regenerate"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Edit controls */}
+                <div>
+                  <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-2">Edit</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => { if (!editMode) markMilestoneComplete("customize"); setEditMode(!editMode); }}
+                      className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold border transition-all ${editMode ? "bg-amber-500/20 border-amber-500/40 text-amber-300" : "bg-white/[0.04] border-white/10 text-slate-400 hover:text-white hover:border-white/20"}`}
+                      data-testid="button-toggle-edit-mode"
+                    >
+                      {editMode ? <EyeOff size={13} /> : <Eye size={13} />}
+                      {editMode ? "Exit Edit" : "Edit Sections"}
+                    </button>
+                    <button
+                      onClick={() => setShowThemeEditor(true)}
+                      className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold bg-white/[0.04] border border-white/10 text-slate-400 hover:text-white hover:border-white/20 transition-all"
+                      data-testid="button-open-theme-editor"
+                    >
+                      <Palette size={13} /> Theme
+                    </button>
+                    <button
+                      onClick={() => setAddSectionOpen(true)}
+                      className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold bg-white/[0.04] border border-dashed border-white/10 text-slate-400 hover:text-white hover:border-white/20 transition-all"
+                      data-testid="button-add-section"
+                    >
+                      <Plus size={13} /> Add Section
+                    </button>
+                    <button
+                      onClick={() => setShowSaved(true)}
+                      className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold bg-white/[0.04] border border-white/10 text-slate-400 hover:text-white hover:border-white/20 transition-all"
+                      data-testid="button-load-designs"
+                    >
+                      <FolderOpen size={13} /> My Designs {savedSites.length > 0 && `(${savedSites.length})`}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Pages (if multi-page) */}
+                {isMultiPage && (
+                  <div>
+                    <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mb-2">Pages</p>
+                    <div className="space-y-1">
+                      {multiPageData?.pages.map(page => (
+                        <button
+                          key={page.id}
+                          onClick={() => setActivePageId(page.id)}
+                          className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-left transition-all ${activePageId === page.id ? "bg-indigo-600/20 border border-indigo-500/30 text-indigo-300" : "bg-white/[0.03] border border-white/10 text-slate-400 hover:text-white"}`}
+                        >
+                          <FileText size={12} /> {page.title}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => setShowAddPage(true)}
+                      className="mt-2 w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs text-slate-500 hover:text-slate-300 border border-dashed border-white/10 hover:border-white/20 transition-all"
+                      data-testid="button-add-page"
+                    >
+                      <Plus size={12} /> Add Page
+                    </button>
+                  </div>
+                )}
+
+                {/* Version history link */}
+                {currentSiteId && (
+                  <button
+                    onClick={openVersionHistory}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs text-slate-500 hover:text-slate-300 border border-white/10 hover:border-white/20 transition-all"
+                    data-testid="button-version-history"
+                  >
+                    <History size={12} /> Version History
+                  </button>
+                )}
+              </div>
+
+              {/* Bottom action bar */}
+              <div className="shrink-0 p-4 border-t border-white/[0.06] space-y-2 bg-black/30 backdrop-blur-md">
+                <div className="flex gap-2">
+                  <button
+                    onClick={handlePublish}
+                    disabled={!siteData}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-3 rounded-xl text-sm font-black bg-green-600 hover:bg-green-500 text-white transition-all disabled:opacity-40 shadow-lg shadow-green-500/20"
+                    data-testid="button-publish"
+                  >
+                    <Globe size={14} /> Publish
+                  </button>
+                  <button
+                    onClick={() => { setSaveName(""); setShowSaveDialog(true); }}
+                    disabled={!siteData}
+                    className="flex items-center justify-center gap-1.5 px-4 py-3 rounded-xl text-sm font-black bg-indigo-600 hover:bg-indigo-500 text-white transition-all disabled:opacity-40 shadow-lg shadow-indigo-500/20"
+                    data-testid="button-save-design"
+                  >
+                    <Save size={14} />
+                  </button>
+                  <button
+                    onClick={handleRegenerate}
+                    disabled={!lastPrompt || isGenerating}
+                    className="flex items-center justify-center gap-1.5 px-3 py-3 rounded-xl text-sm font-bold bg-white/5 border border-white/10 text-slate-400 hover:text-white transition-all disabled:opacity-40"
+                    data-testid="button-regenerate"
+                    title="Regenerate"
+                  >
+                    <RefreshCcw size={14} />
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <div className="flex-1 relative flex flex-col bg-black/40 backdrop-blur-sm z-10">
@@ -2981,118 +3236,6 @@ export default function SiteBuilder() {
                 </div>
               )}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Template Gallery */}
-      <AnimatePresence>
-        {showTemplates && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 backdrop-blur-md"
-            onClick={() => setShowTemplates(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className="bg-[#0a0a1a] border border-white/10 rounded-2xl w-full max-w-5xl max-h-[85vh] shadow-2xl overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-              data-testid="dialog-template-gallery"
-            >
-              <div className="flex items-center justify-between p-6 border-b border-white/10 bg-white/5">
-                <div>
-                  <h2 className="text-xl font-bold flex items-center gap-2">
-                    <Palette className="text-indigo-400" size={22} />
-                    Template Gallery
-                  </h2>
-                  <p className="text-xs text-slate-300 mt-1">Pre-designed landing pages ready to customize</p>
-                </div>
-                <button
-                  onClick={() => setShowTemplates(false)}
-                  className="text-slate-200 hover:text-white p-2 hover:bg-white/10 rounded-lg transition-colors"
-                  data-testid="button-close-templates"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="overflow-y-auto p-6" style={{ maxHeight: "calc(85vh - 80px)" }}>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                  {SITE_TEMPLATES.map((template) => {
-                    const IconComp = template.icon;
-                    return (
-                      <motion.div
-                        key={template.id}
-                        whileHover={{ scale: 1.02, y: -4 }}
-                        whileTap={{ scale: 0.98 }}
-                        className="group relative rounded-xl border border-white/10 overflow-hidden cursor-pointer bg-white/5 hover:border-indigo-500/40 transition-all duration-300"
-                        onClick={() => handleLoadTemplate(template)}
-                        data-testid={`template-card-${template.id}`}
-                      >
-                        <div
-                          className="h-40 relative overflow-hidden"
-                          style={{ backgroundColor: template.siteData.theme.bg }}
-                        >
-                          <div className="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
-                            <div
-                              className="w-10 h-10 rounded-full flex items-center justify-center mb-2"
-                              style={{ backgroundColor: template.color + "20", color: template.color }}
-                            >
-                              <IconComp size={20} />
-                            </div>
-                            <h3
-                              className="text-sm font-bold"
-                              style={{ color: template.siteData.theme.text, fontFamily: template.siteData.theme.font }}
-                            >
-                              {template.siteData.sections[0]?.props?.title}
-                            </h3>
-                            <p
-                              className="text-[10px] mt-1 line-clamp-2 opacity-60"
-                              style={{ color: template.siteData.theme.text }}
-                            >
-                              {template.siteData.sections[0]?.props?.subtitle}
-                            </p>
-                            <div
-                              className="mt-2 px-3 py-1 rounded-full text-[10px] font-bold"
-                              style={{ backgroundColor: template.color, color: template.siteData.theme.bg }}
-                            >
-                              {template.siteData.sections[0]?.props?.cta}
-                            </div>
-                          </div>
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-center pb-3">
-                            <span className="text-xs font-medium text-white bg-indigo-600 px-3 py-1 rounded-full">
-                              Use Template
-                            </span>
-                          </div>
-                        </div>
-                        <div className="p-3">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span
-                              className="w-3 h-3 rounded-full"
-                              style={{ backgroundColor: template.color }}
-                            />
-                            <h4 className="text-sm font-bold text-white">{template.name}</h4>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-slate-200">
-                              {template.industry}
-                            </span>
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-slate-200">
-                              {template.siteData.theme.font}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-300 mt-1.5 line-clamp-2">{template.description}</p>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              </div>
-            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
