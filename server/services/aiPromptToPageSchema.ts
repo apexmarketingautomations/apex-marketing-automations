@@ -695,7 +695,8 @@ export async function generatePageCopy(prompt: string, niche: string): Promise<{
       const raw = extractJSON(response.text);
       return JSON.parse(raw);
     }
-  } catch { // allow-silent-catch: JSON parse fallback — caller returns static copy text below
+  } catch (err) {
+    console.warn("[AI-PAGE-SCHEMA] caught:", err instanceof Error ? err.message : err);
   }
   return { headline: `${intent.businessLabel} — Built for Results`, subheadline: `Serving ${intent.targetAudience}`, body: `Premium services tailored for you.`, ctaText: intent.ctaText };
 }
