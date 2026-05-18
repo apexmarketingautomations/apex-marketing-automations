@@ -5,6 +5,7 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { insertSubAccountSchema, PLAN_TIERS, subAccounts, onboardingDefaults, onboardingDefaultsPayloadSchema } from "@shared/schema";
 import { asyncHandler, parseIntParam, getUserId, verifyAccountOwnership, isApexParentUser, isUserAdmin, SUPPORTED_LANGUAGES } from "./helpers";
+import { isAdminFlag } from "../auth/authorization";
 import { emitUniversalEvent, EVENT_TYPES } from "../intelligence/eventEmitter";
 import { onboardNewSubAccount, backfillExistingSubAccounts } from "../onboarding/onboardSubAccount";
 import { getEffectiveOnboardingDefaults, getInCodeDefaults } from "../onboarding/defaults";
@@ -200,7 +201,7 @@ export function registerAccountRoutes(app: Express) {
     if (!user || typeof user !== "object") return false;
     if (isUserAdmin(user)) return true;
     const u = user as { isAdmin?: unknown; role?: unknown };
-    if (u.isAdmin === "true" || u.isAdmin === true) return true;
+    if (isAdminFlag(u.isAdmin)) return true;
     if (u.role === "DEV_ADMIN") return true;
     return false;
   }

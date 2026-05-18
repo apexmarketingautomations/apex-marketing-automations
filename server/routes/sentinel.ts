@@ -1083,7 +1083,8 @@ export function registerRetroSkipTraceRoute(app: any) {
       } else {
         const { authStorage } = await import("../replit_integrations/auth/storage");
         const dbUser = await authStorage.getUser(userId);
-        adminOk = dbUser?.isAdmin === "true";
+        const { isAdminFlag } = await import("../auth/authorization");
+        adminOk = isAdminFlag(dbUser?.isAdmin);
       }
     }
     if (!adminOk) return res.status(403).json({ error: "admin only" });
@@ -1126,7 +1127,8 @@ export function registerRetroSkipTraceRoute(app: any) {
         } else {
           const { authStorage } = await import("../replit_integrations/auth/storage");
           const dbUser = await authStorage.getUser(userId);
-          sessionAdmin = dbUser?.isAdmin === "true";
+          const { isAdminFlag: _isAdminFlag } = await import("../auth/authorization");
+          sessionAdmin = _isAdminFlag(dbUser?.isAdmin);
         }
       }
       if (!sessionAdmin && !headerOk) return res.status(401).json({ error: "Admin access required" });

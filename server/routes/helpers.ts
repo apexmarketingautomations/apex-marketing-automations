@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import { hasFeature } from "@shared/schema";
+import { isAdminFlag } from "../auth/authorization";
 
 export type AsyncHandler<Req extends Request = Request, Res extends Response = Response> =
   (req: Req, res: Res, next: NextFunction) => Promise<any>;
@@ -131,7 +132,7 @@ async function isUserAdminAsync(user: any): Promise<boolean> {
   if (adminUserId && userId === adminUserId) return true;
   const { authStorage } = await import("../replit_integrations/auth/storage");
   const dbUser = await authStorage.getUser(userId);
-  return dbUser?.isAdmin === "true";
+  return isAdminFlag(dbUser?.isAdmin);
 }
 
 export const requireAdmin = async (req: Request, res: Response, next: NextFunction) => {

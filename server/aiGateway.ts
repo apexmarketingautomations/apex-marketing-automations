@@ -774,20 +774,30 @@ async function callGroq(
   }
 }
 
+/**
+ * Cost-optimized provider selection — cheapest first (excluding Groq, handled separately).
+ * Cost ladder: Gemini Flash → OpenAI → Anthropic
+ * Groq is always tried first in aiChat/aiChatStream before this is called.
+ */
 function selectProvider(): "anthropic" | "openai" | "gemini" {
-  if (isAnthropicConfigured() && !isAnthropicQuotaFailed()) {
-    console.log("[AI-GATEWAY] Provider selected: anthropic");
-    return "anthropic";
+  // Tier 1: Gemini Flash — near-free
+  if (isGeminiConfigured()) {
+    console.log("[PROVIDER-ROUTER] [COST-GUARD] Selected gemini (low-cost tier)");
+    return "gemini";
   }
-  if (isAnthropicConfigured() && isAnthropicQuotaFailed()) {
-    console.warn("[AI-GATEWAY] Anthropic unavailable, falling back to Gemini");
-  }
+  // Tier 2: OpenAI mini
   if (isOpenAIConfigured() && !isCircuitOpen()) {
-    console.log("[AI-GATEWAY] Provider selected: openai");
+    console.log("[PROVIDER-ROUTER] [COST-GUARD] Selected openai (mid-cost tier)");
     return "openai";
   }
-  console.log("[AI-GATEWAY] Provider selected: gemini");
-  return "gemini";
+  // Tier 3: Anthropic — most expensive, last resort
+  if (isAnthropicConfigured() && !isAnthropicQuotaFailed()) {
+    console.log("[PROVIDER-ROUTER] [COST-GUARD] Selected anthropic (high-cost last resort)");
+    return "anthropic";
+  }
+  // Emergency fallback — no good option available
+  console.warn("[PROVIDER-ROUTER] [COST-GUARD] All preferred providers unavailable — falling back to anthropic");
+  return "anthropic";
 }
 
 export async function aiChat(
@@ -798,18 +808,26 @@ export async function aiChat(
   const { route, traceId, subAccountId, forceProvider } = options;
   const start = Date.now();
 
-  // ── forceProvider: "groq" — agent coordinator explicitly routed here ────────
-  if (forceProvider === "groq" && isGroqConfigured()) {
+  // ── Tier 0: Groq — always first (free LPU inference, zero cost) ─────────────
+  // forceProvider="groq" explicitly requests it; otherwise try Groq opportunistically.
+  const shouldTryGroq = forceProvider === "groq" || (!forceProvider && isGroqConfigured());
+  if (shouldTryGroq && isGroqConfigured()) {
     try {
+      console.log("[PROVIDER-ROUTER] [COST-GUARD] [API-USAGE] Attempting Groq (tier-0 free inference)");
       const result = await callGroq(messages, options);
       logObservability({ requestId, traceId, subAccountId, route, provider: "groq" as any, model: result.model, latencyMs: Date.now() - start, success: true, fallbackTriggered: false });
       return result;
     } catch (err: any) {
-      console.warn(`[AI-GATEWAY] Groq failed (${err?.message}), falling back to Anthropic`);
-      // Fall through to normal chain
+      console.warn(`[PROVIDER-ROUTER] [COST-GUARD] Groq failed (${err?.message}) — escalating to paid tier`);
+      if (forceProvider === "groq") {
+        // forceProvider was explicit — don't silently escalate, log clearly
+        console.error("[PROVIDER-ROUTER] forceProvider=groq but Groq failed; continuing to next provider");
+      }
+      // Fall through to paid tier
     }
   }
 
+  // ── Paid tier: Gemini → OpenAI → Anthropic (cost-ascending) ─────────────────
   const provider = selectProvider();
 
   try {
@@ -875,17 +893,6 @@ export async function aiChat(
           console.warn(`[AI-GATEWAY] OpenAI failed (${err?.message}), falling back to Gemini`);
           break;
         }
-      }
-    }
-
-    // Try Groq before giving up
-    if (isGroqConfigured()) {
-      try {
-        const result = await callGroq(messages, options);
-        logObservability({ requestId, traceId, subAccountId, route, provider: "groq" as any, model: result.model, latencyMs: Date.now() - start, success: true, fallbackTriggered: true });
-        return result;
-      } catch (groqErr: any) {
-        console.warn(`[AI-GATEWAY] Groq fallback also failed: ${groqErr?.message}`);
       }
     }
 

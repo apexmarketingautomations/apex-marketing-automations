@@ -43,12 +43,22 @@ export function isAdminUserIdMatch(user: any): boolean {
 }
 
 /**
+ * isAdminFlag — safely normalizes the `isAdmin` DB column.
+ * The column is stored as varchar("true"/"false") but some rows may hold
+ * boolean true from older upserts. Accepts either form.
+ */
+export function isAdminFlag(value: unknown): boolean {
+  if (value === true || value === "true") return true;
+  return false;
+}
+
+/**
  * Returns true if the session user has DB-level or role-level admin flags.
  * These are set by /api/auth/user when the session is verified as admin.
  */
 export function isSessionAdmin(user: any): boolean {
   if (!user) return false;
-  return user.isAdmin === "true" || user.role === "DEV_ADMIN";
+  return isAdminFlag(user.isAdmin) || user.role === "DEV_ADMIN";
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────

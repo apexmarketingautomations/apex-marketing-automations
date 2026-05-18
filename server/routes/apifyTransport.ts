@@ -33,7 +33,8 @@ async function isAdminRequest(req: Request): Promise<boolean> {
   // Passport session user never carries isAdmin/role — check DB directly
   const { authStorage } = await import("../replit_integrations/auth/storage");
   const dbUser = await authStorage.getUser(userId);
-  return dbUser?.isAdmin === "true";
+  const { isAdminFlag } = await import("../auth/authorization");
+  return isAdminFlag(dbUser?.isAdmin);
 }
 
 function requireAdminMiddleware(req: Request, res: Response, next: NextFunction): void {
