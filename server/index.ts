@@ -694,6 +694,14 @@ async function validateMetaCredentials() {
   }
 
   try {
+    const { startApifyLeadScrapers } = await import("./apifyLeadScrapers");
+    startApifyLeadScrapers();
+    console.log("[STARTUP] ✅ Apify lead scrapers started — Google Maps (12h) + Zillow (24h)");
+  } catch (apifyErr: any) {
+    console.error("[STARTUP] Apify lead scrapers failed (non-fatal):", apifyErr?.message);
+  }
+
+  try {
     const { startCaseIntelligence } = await import("./caseIntelligence");
     startCaseIntelligence();
     console.log("[STARTUP] ✅ Case Intelligence Engine started — entity resolution + case grouping");
