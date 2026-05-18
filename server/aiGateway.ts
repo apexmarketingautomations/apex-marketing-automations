@@ -467,6 +467,24 @@ function markAnthropicQuotaFailed(): void {
   console.warn("[AI-GATEWAY] Anthropic quota/billing exhausted — routing all requests to Gemini");
 }
 
+// ── Gemini blocked state (403 API_KEY_SERVICE_BLOCKED) ───────────────────────
+let _geminiBlockedAt: number | null = null;
+const GEMINI_BLOCKED_COOLDOWN_MS = 600_000; // 10 min before re-checking
+
+export function isGeminiBlocked(): boolean {
+  if (_geminiBlockedAt === null) return false;
+  if (Date.now() - _geminiBlockedAt >= GEMINI_BLOCKED_COOLDOWN_MS) {
+    _geminiBlockedAt = null;
+    return false;
+  }
+  return true;
+}
+
+function markGeminiBlocked(reason: string): void {
+  _geminiBlockedAt = Date.now();
+  console.error(`[AI-GATEWAY] Gemini blocked (${reason}) — marking unhealthy for ${GEMINI_BLOCKED_COOLDOWN_MS / 60_000}min`);
+}
+
 function isQuotaError(err: any): boolean {
   const status = err?.status ?? err?.statusCode ?? err?.httpStatusCode;
   if (status === 429 || status === 402 || status === 529) return true;
@@ -485,6 +503,59 @@ function isQuotaError(err: any): boolean {
 function isAuthError(err: any): boolean {
   const status = err?.status ?? err?.statusCode ?? err?.httpStatusCode;
   return status === 401 || status === 403;
+}
+
+function classifyProviderError(provider: string, err: any): {
+  type: "auth" | "quota" | "blocked" | "transient" | "unknown";
+  shouldMarkUnhealthy: boolean;
+  message: string;
+} {
+  const status = err?.status ?? err?.statusCode ?? err?.httpStatusCode;
+  const msg = String(err?.message ?? "").toLowerCase();
+
+  // 401 = invalid key
+  if (status === 401) {
+    return { type: "auth", shouldMarkUnhealthy: true, message: `401 invalid API key` };
+  }
+  // 403 = key blocked/restricted
+  if (status === 403 || msg.includes("api_key_service_blocked") || msg.includes("forbidden") || (status === undefined && msg.includes("403"))) {
+    return { type: "blocked", shouldMarkUnhealthy: true, message: `403 API key blocked/restricted` };
+  }
+  // 429 / quota
+  if (status === 429 || status === 402 || status === 529 || isQuotaError(err)) {
+    return { type: "quota", shouldMarkUnhealthy: false, message: `${status ?? "quota"} rate limit / quota exceeded` };
+  }
+  // 5xx transient
+  if (isTransientError(err)) {
+    return { type: "transient", shouldMarkUnhealthy: false, message: `transient error: ${err?.message ?? String(err)}` };
+  }
+  return { type: "unknown", shouldMarkUnhealthy: false, message: err?.message ?? String(err) };
+}
+
+function applyProviderHealthEffect(provider: string, err: any): void {
+  const { type } = classifyProviderError(provider, err);
+  if (provider === "anthropic") {
+    if (type === "quota" || type === "blocked" || type === "auth") markAnthropicQuotaFailed();
+    else if (type === "transient") recordOpenAIFailure(); // reuse circuit breaker indirectly
+  }
+  if (provider === "openai") {
+    recordOpenAIFailure();
+    if (type === "auth" || type === "blocked") {
+      // Trip circuit breaker immediately for hard auth failures
+      for (let i = 0; i < CIRCUIT_BREAKER_THRESHOLD; i++) circuitBreaker.failures.push(Date.now());
+    }
+  }
+  if (provider === "gemini") {
+    if (type === "auth" || type === "blocked") markGeminiBlocked(`provider error: ${type}`);
+    // For quota, geminiChat's own withRetry + markRateLimited already handled it
+  }
+  if (provider === "groq") {
+    recordProviderFailure("groq", {
+      isQuotaError: type === "quota",
+      isAuthError: type === "auth" || type === "blocked",
+      isTransient: type === "transient",
+    });
+  }
 }
 
 function isTransientError(err: any): boolean {
@@ -689,16 +760,31 @@ async function callGemini(
   options: AIOptions = {}
 ): Promise<AIResponse> {
   const { temperature = 0.7, maxTokens = 4096, jsonMode = false, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
-  const text = await withTimeout(
-    geminiChat(messages, { temperature, maxTokens, jsonMode }),
-    timeoutMs
-  );
-  return {
-    text,
-    ok: true,
-    provider: "gemini",
-    model: GEMINI_FALLBACK_MODEL,
-  };
+  try {
+    const text = await withTimeout(
+      geminiChat(messages, { temperature, maxTokens, jsonMode }),
+      timeoutMs
+    );
+    recordProviderSuccess("gemini", 0);
+    return {
+      text,
+      ok: true,
+      provider: "gemini",
+      model: GEMINI_FALLBACK_MODEL,
+    };
+  } catch (err: any) {
+    const status = err?.status ?? err?.statusCode ?? err?.httpStatusCode;
+    const msg = String(err?.message ?? "").toLowerCase();
+    if (status === 403 || msg.includes("api_key_service_blocked") || msg.includes("403")) {
+      markGeminiBlocked(`HTTP 403 from Gemini API: ${err?.message}`);
+    }
+    recordProviderFailure("gemini", {
+      isQuotaError: status === 429 || isQuotaError(err),
+      isAuthError: status === 401 || status === 403,
+      isTransient: isTransientError(err),
+    });
+    throw err;
+  }
 }
 
 // ── Groq provider (OpenAI-compatible, free tier) ──────────────────────────────
@@ -774,30 +860,59 @@ async function callGroq(
   }
 }
 
+// ── Local deterministic fallback ──────────────────────────────────────────────
+// Used when ALL AI providers fail. Returns a minimal valid response so the app
+// never crashes. Callers must check ok===false and show a user-facing message.
+
+function localDeterministicFallback(messages: ChatMessage[], route?: string): AIResponse {
+  console.error(`[AI-GATEWAY] ALL providers failed — returning local deterministic fallback (route=${route ?? "unknown"})`);
+  // Return ok:false so callers can show a user-friendly message
+  return {
+    text: "",
+    ok: false,
+    errorMessage: "AI generation unavailable — all providers failed. Please try again in a moment.",
+    provider: "anthropic" as any,
+  };
+}
+
 /**
- * Cost-optimized provider selection — cheapest first (excluding Groq, handled separately).
- * Cost ladder: Gemini Flash → OpenAI → Anthropic
- * Groq is always tried first in aiChat/aiChatStream before this is called.
+ * Returns the highest-priority available provider.
+ * Priority: Anthropic → OpenAI → Gemini
+ * The full fallback chain in aiChat() tries all providers in this order,
+ * so selectProvider() is used only for logging and legacy code paths.
  */
 function selectProvider(): "anthropic" | "openai" | "gemini" {
-  // Tier 1: Gemini Flash — near-free
-  if (isGeminiConfigured()) {
-    console.log("[PROVIDER-ROUTER] [COST-GUARD] Selected gemini (low-cost tier)");
-    return "gemini";
-  }
-  // Tier 2: OpenAI mini
-  if (isOpenAIConfigured() && !isCircuitOpen()) {
-    console.log("[PROVIDER-ROUTER] [COST-GUARD] Selected openai (mid-cost tier)");
-    return "openai";
-  }
-  // Tier 3: Anthropic — most expensive, last resort
   if (isAnthropicConfigured() && !isAnthropicQuotaFailed()) {
-    console.log("[PROVIDER-ROUTER] [COST-GUARD] Selected anthropic (high-cost last resort)");
     return "anthropic";
   }
-  // Emergency fallback — no good option available
-  console.warn("[PROVIDER-ROUTER] [COST-GUARD] All preferred providers unavailable — falling back to anthropic");
+  if (isOpenAIConfigured() && !isCircuitOpen()) {
+    return "openai";
+  }
+  if (isGeminiConfigured() && !isGeminiBlocked()) {
+    return "gemini";
+  }
+  // No healthy provider — return anthropic and let the caller handle the error
+  console.warn("[AI-GATEWAY] No healthy provider found — will attempt anthropic as last resort");
   return "anthropic";
+}
+
+/**
+ * Build the full ordered provider chain for a request.
+ * Returns providers in priority order, skipping unhealthy ones.
+ * The chain is: Anthropic → OpenAI → Gemini (all that are configured and healthy).
+ */
+function buildProviderChain(): Array<"anthropic" | "openai" | "gemini"> {
+  const chain: Array<"anthropic" | "openai" | "gemini"> = [];
+  if (isAnthropicConfigured() && !isAnthropicQuotaFailed()) chain.push("anthropic");
+  if (isOpenAIConfigured() && !isCircuitOpen()) chain.push("openai");
+  if (isGeminiConfigured() && !isGeminiBlocked()) chain.push("gemini");
+  // If nothing is healthy, include all configured providers as a last-ditch attempt
+  if (chain.length === 0) {
+    if (isAnthropicConfigured()) chain.push("anthropic");
+    if (isOpenAIConfigured()) chain.push("openai");
+    if (isGeminiConfigured()) chain.push("gemini");
+  }
+  return chain;
 }
 
 export async function aiChat(
@@ -808,114 +923,57 @@ export async function aiChat(
   const { route, traceId, subAccountId, forceProvider } = options;
   const start = Date.now();
 
-  // ── Tier 0: Groq — always first (free LPU inference, zero cost) ─────────────
-  // forceProvider="groq" explicitly requests it; otherwise try Groq opportunistically.
-  const shouldTryGroq = forceProvider === "groq" || (!forceProvider && isGroqConfigured());
-  if (shouldTryGroq && isGroqConfigured()) {
+  // ── Tier 0: Groq (free LPU inference, try first) ─────────────────────────
+  if (isGroqConfigured() && (forceProvider === "groq" || !forceProvider)) {
     try {
-      console.log("[PROVIDER-ROUTER] [COST-GUARD] [API-USAGE] Attempting Groq (tier-0 free inference)");
+      console.log(`[AI-GATEWAY] [${requestId}] Attempting groq (tier-0 free inference)`);
       const result = await callGroq(messages, options);
       logObservability({ requestId, traceId, subAccountId, route, provider: "groq" as any, model: result.model, latencyMs: Date.now() - start, success: true, fallbackTriggered: false });
       return result;
     } catch (err: any) {
-      console.warn(`[PROVIDER-ROUTER] [COST-GUARD] Groq failed (${err?.message}) — escalating to paid tier`);
-      if (forceProvider === "groq") {
-        // forceProvider was explicit — don't silently escalate, log clearly
-        console.error("[PROVIDER-ROUTER] forceProvider=groq but Groq failed; continuing to next provider");
+      const { type, message } = classifyProviderError("groq", err);
+      console.warn(`[AI-GATEWAY] [${requestId}] groq failed (${type}: ${message}) — escalating`);
+      applyProviderHealthEffect("groq", err);
+    }
+  }
+  if (forceProvider === "groq") {
+    console.error(`[AI-GATEWAY] [${requestId}] forceProvider=groq but Groq failed — escalating anyway`);
+  }
+
+  // ── Paid tier: Anthropic → OpenAI → Gemini ───────────────────────────────
+  const chain = buildProviderChain();
+  let lastError: string = "No providers available";
+  let fallbackTriggered = false;
+
+  for (const provider of chain) {
+    try {
+      console.log(`[AI-GATEWAY] [${requestId}] Attempting ${provider}${fallbackTriggered ? " (fallback)" : ""} (model=${provider === "anthropic" ? ANTHROPIC_MODEL : provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL})`);
+
+      let result: AIResponse;
+      if (provider === "anthropic") {
+        result = await callAnthropic(messages, options);
+      } else if (provider === "openai") {
+        result = await callOpenAI(messages, options);
+      } else {
+        result = await callGemini(messages, options);
       }
-      // Fall through to paid tier
+
+      logObservability({ requestId, traceId, subAccountId, route, provider, model: result.model, latencyMs: Date.now() - start, success: true, fallbackTriggered });
+      console.log(`[AI-GATEWAY] [${requestId}] ${provider} succeeded${fallbackTriggered ? " (via fallback)" : ""} in ${Date.now() - start}ms`);
+      return result;
+    } catch (err: any) {
+      const { type, message } = classifyProviderError(provider, err);
+      lastError = `${provider} ${type}: ${message}`;
+      console.warn(`[AI-GATEWAY] [${requestId}] ${provider} failed — ${type}: ${message}`);
+      applyProviderHealthEffect(provider, err);
+      logObservability({ requestId, traceId, subAccountId, route, provider, latencyMs: Date.now() - start, success: false, fallbackTriggered, error: lastError });
+      fallbackTriggered = true;
     }
   }
 
-  // ── Paid tier: Gemini → OpenAI → Anthropic (cost-ascending) ─────────────────
-  const provider = selectProvider();
-
-  try {
-    // ── Anthropic (primary when ANTHROPIC_API_KEY is set) ──────────────────
-    if (provider === "anthropic") {
-      try {
-        const result = await callAnthropic(messages, options);
-        logObservability({
-          requestId, traceId, subAccountId, route,
-          provider: "anthropic" as any,
-          model: result.model,
-          latencyMs: Date.now() - start,
-          success: true,
-          fallbackTriggered: false,
-        });
-        return result;
-      } catch (err: any) {
-        if (isQuotaError(err)) markAnthropicQuotaFailed();
-        console.warn(`[AI-GATEWAY] Anthropic failed (${err?.message}), falling back`);
-        // Fall through to OpenAI → Gemini
-        if (isOpenAIConfigured() && !isCircuitOpen()) {
-          try {
-            console.log("[AI-GATEWAY] OpenAI unavailable, falling back to Gemini");
-            const result = await callOpenAI(messages, options);
-            logObservability({ requestId, traceId, subAccountId, route, provider: "openai", model: result.model, latencyMs: Date.now() - start, success: true, fallbackTriggered: true });
-            return result;
-          } catch (openaiErr: any) {
-            recordOpenAIFailure();
-            console.warn(`[AI-GATEWAY] OpenAI fallback also failed: ${openaiErr?.message}`);
-          }
-        }
-        if (isGeminiAvailable()) {
-          console.log("[AI-GATEWAY] Anthropic unavailable, falling back to Gemini");
-          const result = await callGemini(messages, options);
-          logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: result.model, latencyMs: Date.now() - start, success: true, fallbackTriggered: true });
-          return result;
-        }
-        logObservability({ requestId, traceId, subAccountId, route, provider: "anthropic" as any, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: "All providers failed" });
-        return { text: "", ok: false, errorMessage: "All AI providers failed", provider: "anthropic" as any };
-      }
-    }
-
-    if (provider === "openai") {
-      for (let attempt = 0; attempt <= MAX_OPENAI_RETRIES; attempt++) {
-        try {
-          const result = await callOpenAI(messages, options);
-          logObservability({
-            requestId, traceId, subAccountId, route,
-            provider: "openai",
-            model: result.model,
-            latencyMs: Date.now() - start,
-            success: true,
-            fallbackTriggered: false,
-          });
-          return result;
-        } catch (err: any) {
-          recordOpenAIFailure();
-          if (!isAuthError(err) && attempt < MAX_OPENAI_RETRIES && isTransientError(err)) {
-            console.warn(`[AI-GATEWAY] OpenAI attempt ${attempt + 1} failed (retrying): ${err?.message}`);
-            continue;
-          }
-          // Do NOT throw — fall through to Gemini fallback below
-          console.warn(`[AI-GATEWAY] OpenAI failed (${err?.message}), falling back to Gemini`);
-          break;
-        }
-      }
-    }
-
-    if (!isGeminiAvailable()) {
-      logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: "No AI provider available" });
-      return { text: "", ok: false, errorMessage: "No AI provider available", provider: "gemini", model: GEMINI_FALLBACK_MODEL };
-    }
-
-    const result = await callGemini(messages, options);
-    logObservability({
-      requestId, traceId, subAccountId, route,
-      provider: "gemini",
-      model: result.model,
-      latencyMs: Date.now() - start,
-      success: true,
-      fallbackTriggered: false,
-    });
-    return result;
-  } catch (err: any) {
-    const errorMessage = err?.message ?? "unknown";
-    logObservability({ requestId, traceId, subAccountId, route, provider, model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: errorMessage });
-    return { text: "", ok: false, errorMessage, provider, model: provider === "openai" ? OPENAI_MODEL : GEMINI_FALLBACK_MODEL };
-  }
+  // ── All providers failed — local deterministic fallback ──────────────────
+  console.error(`[AI-GATEWAY] [${requestId}] ALL ${chain.length} provider(s) failed. Last error: ${lastError}. route=${route ?? "unknown"}`);
+  return localDeterministicFallback(messages, route);
 }
 
 export async function* aiChatStream(
@@ -926,10 +984,12 @@ export async function* aiChatStream(
   const { route, traceId, subAccountId } = options;
   const start = Date.now();
   let chunksYielded = 0;
-  const provider = selectProvider();
+  const chain = buildProviderChain();
+  const provider = chain[0] ?? "anthropic";
 
   try {
-    if (provider === "anthropic") {
+    // ── Anthropic streaming ───────────────────────────────────────────────────
+    if (chain.includes("anthropic")) {
       try {
         for await (const chunk of callAnthropicStream(messages, options)) {
           chunksYielded++;
@@ -938,18 +998,17 @@ export async function* aiChatStream(
         logObservability({ requestId, traceId, subAccountId, route, provider: "anthropic" as any, model: ANTHROPIC_MODEL, latencyMs: Date.now() - start, success: true, fallbackTriggered: false });
         return;
       } catch (err: any) {
-        if (isQuotaError(err)) markAnthropicQuotaFailed();
+        applyProviderHealthEffect("anthropic", err);
         if (chunksYielded > 0) {
           logObservability({ requestId, traceId, subAccountId, route, provider: "anthropic" as any, model: ANTHROPIC_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: `Mid-stream: ${err?.message}` });
           throw new Error(`Anthropic stream interrupted after ${chunksYielded} chunks: ${err?.message}`);
         }
         console.warn(`[AI-GATEWAY] Anthropic stream failed (${err?.message}), falling back`);
-        console.log("[AI-GATEWAY] Anthropic unavailable, falling back to Gemini");
       }
     }
 
-    // ── OpenAI (primary or Anthropic fallback) ────────────────────────────────
-    if (isOpenAIConfigured() && !isCircuitOpen()) {
+    // ── OpenAI streaming (primary or Anthropic fallback) ─────────────────────
+    if (chain.includes("openai") && isOpenAIConfigured() && !isCircuitOpen()) {
       for (let attempt = 0; attempt <= MAX_OPENAI_RETRIES; attempt++) {
         try {
           const { temperature = 0.7, maxTokens = 4096, jsonMode = false, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
@@ -983,7 +1042,7 @@ export async function* aiChatStream(
               model: OPENAI_MODEL,
               latencyMs: Date.now() - start,
               success: true,
-              fallbackTriggered: false,
+              fallbackTriggered: chain.includes("anthropic"),
             });
             return;
           } catch (err: any) {
@@ -1004,7 +1063,7 @@ export async function* aiChatStream(
           }
         } catch (err: any) {
           if (chunksYielded > 0) throw err;
-          recordOpenAIFailure();
+          applyProviderHealthEffect("openai", err);
           if (!isAuthError(err) && attempt < MAX_OPENAI_RETRIES && isTransientError(err)) {
             console.warn(`[AI-GATEWAY] OpenAI stream attempt ${attempt + 1} failed (retrying): ${err?.message}`);
             continue;
@@ -1016,9 +1075,9 @@ export async function* aiChatStream(
       }
     }
 
-    // ── Gemini (final fallback) ────────────────────────────────────────────────
-    if (!isGeminiAvailable()) {
-      logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: false, error: "No AI provider available" });
+    // ── Gemini streaming (final fallback) ─────────────────────────────────────
+    if (!chain.includes("gemini") || !isGeminiAvailable() || isGeminiBlocked()) {
+      logObservability({ requestId, traceId, subAccountId, route, provider: "gemini", model: GEMINI_FALLBACK_MODEL, latencyMs: Date.now() - start, success: false, fallbackTriggered: true, error: "No AI provider available" });
       throw new Error("No AI provider available for streaming");
     }
 
@@ -1037,7 +1096,7 @@ export async function* aiChatStream(
       model: GEMINI_FALLBACK_MODEL,
       latencyMs: Date.now() - start,
       success: true,
-      fallbackTriggered: false,
+      fallbackTriggered: chain.length > 1,
     });
   } catch (err: any) {
     logObservability({
@@ -1329,6 +1388,16 @@ export async function aiGenerateImage(prompt: string): Promise<string | null> {
     return null;
   }
 }
+
+// ── Test-only utilities ───────────────────────────────────────────────────────
+// Exposed so unit tests can manipulate module-level state without real API calls.
+// Never import these in production code.
+export const _testOnly = {
+  markGeminiBlocked:    (reason: string) => markGeminiBlocked(reason),
+  resetGeminiBlocked:   () => { _geminiBlockedAt = null; },
+  resetAnthropicQuota:  () => { _anthropicQuotaFailedAt = null; },
+  resetCircuitBreaker:  () => { circuitBreaker.failures = []; circuitBreaker.trippedAt = null; },
+};
 
 export function logProviderStartup(): void {
   const anthropicActive = isAnthropicConfigured();

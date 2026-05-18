@@ -12,6 +12,7 @@
 import { Suspense, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import { WebGLSceneRenderer } from "./WebGLSceneRenderer";
+import { LayoutTreeRenderer } from "./LayoutTreeRenderer";
 import type { DynamicPageSchema, SectionSchema, CTAConfig, CTAAnimation } from "@/lib/dynamic-pages/schema";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -251,6 +252,14 @@ interface Props {
 }
 
 export function DynamicPageRenderer({ schema, isPreview = false, heroHeight = "500px" }: Props) {
+  // ── Stitch-style freeform layout engine (new default) ──
+  // When a composed layout tree is present, render it directly. The WebGL hero
+  // is a `scene` node inside the tree, so there is no separate hero block.
+  if (schema.layout?.root) {
+    return <LayoutTreeRenderer layout={schema.layout} schema={schema} isPreview={isPreview} />;
+  }
+
+  // ── Legacy block renderer (apex-fast mode) ──
   const sorted = [...(schema.sections ?? [])].sort((a, b) => a.order - b.order);
   const hasGeneratedHtml = !!schema.generatedHtml?.trim();
 
