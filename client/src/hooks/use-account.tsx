@@ -41,7 +41,8 @@ const AccountContext = createContext<AccountContextValue>({
 export function AccountProvider({ children }: { children: ReactNode }) {
   const [activeAccountId, setActiveAccountIdState] = useState<number | null>(() => {
     const stored = localStorage.getItem("apex_active_account");
-    return stored ? parseInt(stored, 10) : null;
+    if (stored) return parseInt(stored, 10);
+    return import.meta.env.DEV ? 3 : null;
   });
 
   const setActiveAccountId = useCallback((id: number | null) => {

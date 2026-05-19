@@ -7,6 +7,7 @@ import { aiChat, isAIConfigured } from "../aiGateway";
 import express from "express";
 import { asyncHandler, parseIntParam, logUsageInternal } from "./helpers";
 import { emitUniversalEvent, emitWithTimeline, EVENT_TYPES } from "../intelligence/eventEmitter";
+import { isPlatformAdmin } from "../auth/authorization";
 
 const MAX_CODE_BYTES_PER_SECTION = 200_000;
 const MAX_CODE_BYTES_PER_SITE = 1_000_000;
@@ -828,8 +829,9 @@ Return this structure:
 
     // Only Apex admin accounts get vibe sites (premium feature)
     const { isApexParentUser } = await import("./helpers");
-    const isAdmin = await isApexParentUser(userId);
-    if (!isAdmin) {
+    const isApexAdmin = userId ? await isApexParentUser(userId) : false;
+    const isAllowed = isPlatformAdmin(req) || isApexAdmin;
+    if (!isAllowed) {
       return res.status(403).json({ error: "Vibe Sites are a premium feature. Contact Apex to upgrade." });
     }
 
@@ -1079,4 +1081,3 @@ The HTML must be completely self-contained. All CSS in <style> tags. All JS in <
     }
   }));
 }
-

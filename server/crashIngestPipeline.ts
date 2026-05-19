@@ -25,6 +25,7 @@ import {
 import crypto from "crypto";
 import { storage } from "./storage";
 import { fetchFHPHSMVFeedSafe, type SentinelIncidentRaw } from "./sentinel";
+import { fetchAllCountyCrashFeeds } from "./countyCrashFeeds";
 import { resolveBatchDataKey, recordBatchDataRun } from "./vendorConfig";
 import {
   upsertContact,
@@ -740,33 +741,50 @@ async function pollCycle(): Promise<void> {
     (feedResult.error ? ` error=${feedResult.error}` : ""),
   );
 
+  // ── Layer 1: county CAD crash feeds (server/countyCrashFeeds.ts) ──────────
+  // Fetched every cycle, INDEPENDENT of the FHP feed's status. This is the
+  // whole point of the SWFL expansion: when FHP is down (status "error") or
+  // empty, county signals must still flow into crash_reports. The aggregator
+  // already isolates each county behind a timeout + try/catch, so this can
+  // never throw or stall the tick.
+  const countyIncidents = await fetchAllCountyCrashFeeds();
+
   if (feedResult.status === "error") {
     stats.consecutiveFailures++;
     stats.lastFailureDetail = feedResult.error || "Unknown feed error";
     stats.lastFailureTime = new Date().toISOString();
 
-    const cycle: PollCycleSummary = {
-      traceId, pollStart, pollStartET, requestSent,
-      responseStatus: "error",
-      httpStatus: feedResult.httpStatus,
-      countReturned: 0, countParsed: 0, countInserted: 0,
-      countSkipped: 0, countSkippedDuplicateFhpId: 0,
-      countExistingRawReconciled: 0, countAlreadyConverted: 0,
-      countConvertedToLeads: 0, countFailed: 1,
-      pollEnd: new Date().toISOString(),
-      durationMs: Date.now() - startMs,
-      error: feedResult.error,
-      lastPollCursorMs: prevCursorMs ?? undefined,
-    };
-    recordCycle(cycle);
-    console.log(`[CRASH-INGEST] ── POLL CYCLE END (ERROR) ── traceId=${traceId} error=${feedResult.error} durationMs=${cycle.durationMs}`);
-    return;
+    // FHP failed — but if county feeds returned signals, do NOT bail. Record
+    // the FHP failure for health tracking, then fall through to ingest the
+    // county incidents. Only short-circuit when there is genuinely nothing.
+    if (countyIncidents.length === 0) {
+      const cycle: PollCycleSummary = {
+        traceId, pollStart, pollStartET, requestSent,
+        responseStatus: "error",
+        httpStatus: feedResult.httpStatus,
+        countReturned: 0, countParsed: 0, countInserted: 0,
+        countSkipped: 0, countSkippedDuplicateFhpId: 0,
+        countExistingRawReconciled: 0, countAlreadyConverted: 0,
+        countConvertedToLeads: 0, countFailed: 1,
+        pollEnd: new Date().toISOString(),
+        durationMs: Date.now() - startMs,
+        error: feedResult.error,
+        lastPollCursorMs: prevCursorMs ?? undefined,
+      };
+      recordCycle(cycle);
+      console.log(`[CRASH-INGEST] ── POLL CYCLE END (ERROR) ── traceId=${traceId} error=${feedResult.error} durationMs=${cycle.durationMs}`);
+      return;
+    }
+    console.warn(
+      `[CRASH-INGEST] FHP feed errored (${feedResult.error}) but ${countyIncidents.length} ` +
+      `county signal(s) available — continuing on county feeds alone`,
+    );
   }
 
   stats.consecutiveFailures = 0;
-  stats.totalCrashesDiscovered += countReturned;
+  stats.totalCrashesDiscovered += countReturned + countyIncidents.length;
 
-  if (feedResult.status === "empty") {
+  if (feedResult.status === "empty" && countyIncidents.length === 0) {
     lastPollCursorMs = pollStartMs;
     const cycle: PollCycleSummary = {
       traceId, pollStart, pollStartET, requestSent,
@@ -784,9 +802,14 @@ async function pollCycle(): Promise<void> {
     return;
   }
 
+  // Merge the FHP incidents with the county CAD signals. Dedup, insert, lead
+  // qualification and account fan-out all run unchanged in runIngestCycle —
+  // county signals are just more SentinelIncidentRaw rows.
+  const allIncidents = [...feedResult.incidents, ...countyIncidents];
+
   const defaultSubAccountId = await getDefaultSubAccountId();
   const { inserted, skipped, skippedDuplicateFhpId, existingRawReconciled, alreadyConverted, leads, failed } = await runIngestCycle(
-    feedResult.incidents,
+    allIncidents,
     traceId,
     defaultSubAccountId,
   );
@@ -804,8 +827,8 @@ async function pollCycle(): Promise<void> {
   const cycle: PollCycleSummary = {
     traceId, pollStart, pollStartET, requestSent,
     responseStatus: "ok",
-    countReturned,
-    countParsed: countReturned,
+    countReturned: allIncidents.length,
+    countParsed: allIncidents.length,
     countInserted: inserted,
     countSkipped: skipped,
     countSkippedDuplicateFhpId: skippedDuplicateFhpId,

@@ -28,6 +28,8 @@ export const CONTACT_SOURCES = {
   CRASH:         "sentinel_crash",
   LEGAL:         "legal_pipeline",
   JAIL_BOOKING:  "jail_booking",
+  /** Public traffic-citation court case (clerk of courts) — Layer 2 name recovery. */
+  CLERK_TRAFFIC: "clerk_traffic",
   HOME_SERVICES: "home_services",
   APIFY:         "apify_scrape",
   META_LEAD:     "meta_lead",

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { SalesChatbot } from "@/components/sales-chatbot";
+import { HomeHero3D } from "@/components/landing/HomeHero3D";
 import {
   MessageSquare, GitFork, Bot, LayoutTemplate, Megaphone, Phone, Star,
   DollarSign, Link2, Rocket, TrendingUp, Palette, Sparkles, ArrowRight,
@@ -197,6 +198,7 @@ const stats = [
 export default function LandingPage() {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   const [slotsLeft, setSlotsLeft] = useState(12);
+  const [showAllFeatures, setShowAllFeatures] = useState(false);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("apex_slots");
@@ -239,11 +241,14 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero */}
-      <section className="relative pt-32 pb-20 md:pt-44 md:pb-32 px-6">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1200px] h-[900px] bg-gradient-to-b from-indigo-600/20 via-purple-600/10 to-transparent rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-gradient-to-tr from-cyan-600/10 to-transparent rounded-full blur-3xl pointer-events-none" />
+      <section className="relative pt-24 md:pt-28 min-h-[92vh] flex items-stretch">
+        <div className="absolute inset-0 pointer-events-none">
+          <HomeHero3D className="absolute inset-0" accent="#7c3aed" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/15 via-black/30 to-[#030014]" />
+        </div>
 
-        <div className="relative z-10 max-w-5xl mx-auto text-center">
+        <div className="relative z-10 px-6 pt-14 pb-20 md:pt-24 md:pb-32 w-full">
+          <div className="max-w-5xl mx-auto text-center">
           <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5 }}>
             <div className="inline-flex items-center gap-2 px-5 py-2 rounded-full text-xs font-bold border border-red-500/40 bg-red-500/10 text-red-400 mb-6 animate-pulse" data-testid="badge-blitz">
               <Zap size={14} /> 30-DAY LAUNCH BLITZ — 50% OFF LOCKED FOREVER
@@ -326,6 +331,7 @@ export default function LandingPage() {
           >
             No credit card required. Cancel anytime.
           </motion.p>
+          </div>
         </div>
       </section>
 
@@ -363,6 +369,24 @@ export default function LandingPage() {
             <motion.p variants={fadeUp} custom={2} className="text-slate-300 mt-4 max-w-2xl mx-auto text-base md:text-lg">
               35+ tools across 7 categories — replacing GoHighLevel, HubSpot, Twilio Flex, Vapi, Manychat, Calendly, Mailchimp, Zapier and a dozen others. All under one login, one bill, one AI brain.
             </motion.p>
+            <motion.div variants={fadeUp} custom={3} className="mt-8 flex items-center justify-center">
+              <button
+                type="button"
+                onClick={() => setShowAllFeatures((v) => !v)}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-sm font-bold text-white transition-colors"
+                data-testid="button-features-toggle"
+              >
+                {showAllFeatures ? (
+                  <>
+                    <ChevronUp size={16} /> Show less
+                  </>
+                ) : (
+                  <>
+                    <ChevronDown size={16} /> Show all tools
+                  </>
+                )}
+              </button>
+            </motion.div>
           </motion.div>
 
           <div className="space-y-14">
@@ -385,7 +409,7 @@ export default function LandingPage() {
                 </motion.div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {group.tools.map((tool, i) => {
+                  {(showAllFeatures ? group.tools : group.tools.slice(0, 3)).map((tool, i) => {
                     const c = colorMap[tool.color] || colorMap.cyan;
                     return (
                       <motion.div
@@ -394,7 +418,7 @@ export default function LandingPage() {
                         custom={i + 1}
                         data-testid={`card-feature-${tool.title.toLowerCase().replace(/\s+/g, "-")}`}
                       >
-                        <div className={`group h-full bg-white/[0.03] border ${c.border} rounded-2xl p-5 hover:bg-white/[0.06] hover:border-white/20 transition-all duration-300`}>
+                        <div className={`group h-full bg-white/[0.03] border ${c.border} rounded-lg p-5 hover:bg-white/[0.06] hover:border-white/20 transition-all duration-300`}>
                           <div className="flex items-start gap-4">
                             <div className={`w-11 h-11 rounded-xl ${c.bg} flex items-center justify-center shrink-0`}>
                               <tool.icon size={22} className={c.text} />

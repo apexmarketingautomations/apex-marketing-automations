@@ -269,6 +269,41 @@ export function registerAuthRoutes(app: Express): void {
     }
   });
 
+  app.get("/api/auth/dev-admin-login", async (req, res) => {
+    if (process.env.NODE_ENV === "production") {
+      return res.status(404).json({ message: "Not found" });
+    }
+
+    try {
+      const adminUserId = process.env.ADMIN_USER_ID;
+      if (!adminUserId) {
+        return res.status(500).json({ message: "ADMIN_USER_ID is required for dev admin login" });
+      }
+
+      const user = await authStorage.getUser(adminUserId);
+      if (!user) {
+        return res.status(404).json({ message: "Admin user not found. Run /api/auth/setup-admin first." });
+      }
+
+      const sessionUser = { id: user.id, claims: { sub: user.id }, authProvider: user.authProvider || "email" };
+      req.session.regenerate?.((regenErr: any) => {
+        if (regenErr) {
+          console.error("[AUTH] Dev admin session regenerate failed:", regenErr.message);
+          return res.status(500).json({ message: "Session initialization failed" });
+        }
+        req.login(sessionUser, (err: any) => {
+          if (err) {
+            console.error("[AUTH] Dev admin login failed:", err);
+            return res.status(500).json({ message: "Dev admin login failed" });
+          }
+          res.redirect("/");
+        });
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err?.message || "Dev admin login failed" });
+    }
+  });
+
   app.post("/api/auth/email-login", async (req, res) => {
     try {
       const { email, password } = req.body;

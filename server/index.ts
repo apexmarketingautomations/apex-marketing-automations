@@ -26,6 +26,7 @@ import { runStartupChecks } from "./startupChecks";
 import { logSystemError, logSystemEvent } from "./systemLogger";
 import { clearLaylaCache } from "./services/laylaAccountResolver";
 import { ensureAccountsUnprotected } from "./startupPatches";
+import { getStitchApiKey } from "./stitchApi";
 
 function isRedisQuotaError(reason: any): boolean {
   const s = `${reason?.message ?? ""} ${String(reason)}`;
@@ -779,23 +780,29 @@ async function validateMetaCredentials() {
     console.error("[STARTUP] CourtListener pipeline failed to start (non-fatal):", clErr?.message);
   }
 
-  // Hillsborough pipelines disabled — outside SW Florida coverage area
-  // Uncomment to re-enable:
-  // try {
-  //   const { startHillsboroughRecordsScheduler } = await import("./hillsboroughRecordsPipeline");
-  //   startHillsboroughRecordsScheduler();
-  //   console.log("[STARTUP] ✅ Hillsborough Official Records pipeline started — lis pendens + judgments (daily at 06:00 ET)");
-  // } catch (hillsErr: any) {
-  //   console.error("[STARTUP] Hillsborough Records pipeline failed to start (non-fatal):", hillsErr?.message);
-  // }
+  try {
+    const { startClerkTrafficScheduler } = await import("./clerkTrafficEnrich");
+    startClerkTrafficScheduler();
+    console.log("[STARTUP] ✅ Clerk Traffic enrichment started — SWFL crash name recovery (LEE/COLLIER/CHARLOTTE, every 6h)");
+  } catch (clerkErr: any) {
+    console.error("[STARTUP] Clerk Traffic enrichment failed to start (non-fatal):", clerkErr?.message);
+  }
 
-  // try {
-  //   const { startHillsboroughFilingsScheduler } = await import("./hillsboroughCourtFilingsPipeline");
-  //   startHillsboroughFilingsScheduler();
-  //   console.log("[STARTUP] ✅ Hillsborough Court Filings pipeline started — divorce/custody/probate/foreclosure (daily at 07:00 ET)");
-  // } catch (hillsFilingsErr: any) {
-  //   console.error("[STARTUP] Hillsborough Filings pipeline failed to start (non-fatal):", hillsFilingsErr?.message);
-  // }
+  try {
+    const { startHillsboroughRecordsScheduler } = await import("./hillsboroughRecordsPipeline");
+    startHillsboroughRecordsScheduler();
+    console.log("[STARTUP] ✅ Hillsborough Official Records pipeline started — lis pendens + judgments (daily at 06:00 ET)");
+  } catch (hillsErr: any) {
+    console.error("[STARTUP] Hillsborough Records pipeline failed to start (non-fatal):", hillsErr?.message);
+  }
+
+  try {
+    const { startHillsboroughFilingsScheduler } = await import("./hillsboroughCourtFilingsPipeline");
+    startHillsboroughFilingsScheduler();
+    console.log("[STARTUP] ✅ Hillsborough Court Filings pipeline started — divorce/custody/probate/foreclosure (daily at 07:00 ET)");
+  } catch (hillsFilingsErr: any) {
+    console.error("[STARTUP] Hillsborough Filings pipeline failed to start (non-fatal):", hillsFilingsErr?.message);
+  }
 
   try {
     const { startRetroSkipTraceScheduler } = await import("./retroSkipTrace");
@@ -1866,7 +1873,6 @@ RULES:
   const { registerEnterpriseAdminRoutes } = await import("./routes/enterpriseAdmin");
   registerEnterpriseAdminRoutes(app);
 
-
   await setupAuth(app);
 
   // Admin-secret bypass: when an internal/trusted caller (e.g. the Apex
@@ -2016,14 +2022,21 @@ RULES:
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
+  const listenOptions: { port: number; host: string; reusePort?: boolean } = {
+    port,
+    host: "0.0.0.0",
+  };
+  if (process.platform !== "darwin") {
+    listenOptions.reusePort = true;
+  }
   httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
+    listenOptions,
     async () => {
       log(`serving on port ${port}`);
+
+      // Warn once at startup if Stitch is not configured (server-only secret).
+      // Do not log the key value.
+      getStitchApiKey();
 
       // ── Create new tables if they don't exist yet ─────────────────────────
       try {
@@ -2035,26 +2048,34 @@ RULES:
 
       // ── Generic sequence audit — discovers and repairs ALL drifted sequences ──
       // Push schema using drizzle-kit
-  try {
-    const { execSync } = await import("child_process");
-    console.log("[STARTUP] Running database schema push...");
-    execSync("npx drizzle-kit push --force", { 
-      encoding: "utf8",
-      env: { ...process.env },
-      stdio: "pipe",
-    });
-    console.log("[STARTUP] ✅ Database schema push complete");
-  } catch (migErr: any) {
-    console.error("[STARTUP] Schema push failed:", migErr?.message?.slice(0, 300));
+  if (process.env.SKIP_STARTUP_DB_MAINTENANCE === "true") {
+    console.log("[STARTUP] Skipping database schema push (SKIP_STARTUP_DB_MAINTENANCE=true)");
+  } else {
+    try {
+      const { execSync } = await import("child_process");
+      console.log("[STARTUP] Running database schema push...");
+      execSync("npx drizzle-kit push --force", { 
+        encoding: "utf8",
+        env: { ...process.env },
+        stdio: "pipe",
+      });
+      console.log("[STARTUP] ✅ Database schema push complete");
+    } catch (migErr: any) {
+      console.error("[STARTUP] Schema push failed:", migErr?.message?.slice(0, 300));
+    }
   }
 
   console.error("[STARTUP] BOOT ENTRY REACHED — running sequence audit");
-      try {
-        const { auditAndRepairSequences, repairAgentTasksSequence } = await import("./startup/sequenceAudit");
-        await repairAgentTasksSequence();
-        await auditAndRepairSequences();
-      } catch (auditErr: any) {
-        console.error("[SEQ-AUDIT] FATAL — audit threw:", auditErr?.message, auditErr?.stack);
+      if (process.env.SKIP_STARTUP_DB_MAINTENANCE === "true") {
+        console.log("[SEQ-AUDIT] Skipped (SKIP_STARTUP_DB_MAINTENANCE=true)");
+      } else {
+        try {
+          const { auditAndRepairSequences, repairAgentTasksSequence } = await import("./startup/sequenceAudit");
+          await repairAgentTasksSequence();
+          await auditAndRepairSequences();
+        } catch (auditErr: any) {
+          console.error("[SEQ-AUDIT] FATAL — audit threw:", auditErr?.message, auditErr?.stack);
+        }
       }
 
       try {
