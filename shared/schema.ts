@@ -997,6 +997,27 @@ export const insertAppointmentSchema = createInsertSchema(appointments).omit({ i
 export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
 export type Appointment = typeof appointments.$inferSelect;
 
+// ---- Front Desk Tickets (Hotel Kiosk / Phone Intake) ----
+
+export const frontDeskTickets = pgTable("front_desk_tickets", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  type: text("type").notNull(), // reservation_request | check_in | check_out | escalation | general
+  status: text("status").default("open").notNull(), // open | in_progress | closed
+  priority: text("priority").default("normal").notNull(), // low | normal | high | urgent
+  source: text("source").default("kiosk").notNull(), // kiosk | phone | sms | staff
+  guestName: text("guest_name"),
+  guestPhone: text("guest_phone"),
+  guestEmail: text("guest_email"),
+  payload: jsonb("payload").default({}).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertFrontDeskTicketSchema = createInsertSchema(frontDeskTickets).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertFrontDeskTicket = z.infer<typeof insertFrontDeskTicketSchema>;
+export type FrontDeskTicket = typeof frontDeskTickets.$inferSelect;
+
 // ---- Email Campaigns ----
 
 export const emailCampaigns = pgTable("email_campaigns", {
