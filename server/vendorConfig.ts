@@ -13,10 +13,9 @@
  */
 
 // ── Crash lead accounts (always receive crash leads via crashIngestPipeline) ──
-//   3  = Apex Marketing Automations (platform owner)
-//   3  = APEX MARKETING Account (APEX_MAIN_ACCOUNT_ID in crashIngestPipeline)
-//   4  = Crash Connect — Giovanni (GIOVANNI_ACCOUNT_ID in crashIngestPipeline)
-export const CRASH_LEAD_ACCOUNT_IDS = new Set<number>([3, 4]);
+//   3  = Apex Marketing Automations (platform owner — sole recipient of all leads)
+//   4  = Crash Connect — Giovanni REMOVED. All data migrated to account 3 (2026-05-18)
+export const CRASH_LEAD_ACCOUNT_IDS = new Set<number>([3]);
 
 // ── Enrichment-allowed accounts ───────────────────────────────────────────────
 // Only accounts in this set may trigger paid external API calls:
