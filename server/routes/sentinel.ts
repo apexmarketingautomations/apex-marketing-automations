@@ -1388,6 +1388,58 @@ export function registerRetroSkipTraceRoute(app: any) {
     }
   });
 
+  // ── FDOT SSOGis Crash Ingest ─────────────────────────────────────────────────
+  // POST /api/internal/fdot-crash-ingest
+  // Admin-secret gated. Fetches crash records from FDOT's free ArcGIS API (no
+  // ScrapingBee needed) and creates sentinel_followup-style PENDING jobs so the
+  // FLHSMV worker picks them up and fetches the full police report + PDF.
+  //
+  // The FDOT data covers ALL FL agencies (LCSO, Cape Coral PD, Fort Myers PD, FHP)
+  // but is published annually — currently complete through 2022.
+  //
+  // Body:
+  //   county       - "lee" | "collier" | "charlotte" | ... (default "lee")
+  //   years        - array of calendar years (default all confirmed: 2015-2022)
+  //   subAccountId - required: which account to attach these records to
+  //   dryRun       - if true, counts only — no DB writes
+  //   limitPerYear - max records per year (default 50000)
+  app.post("/api/internal/fdot-crash-ingest", async (req: any, res: any) => {
+    try {
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured" });
+      const headerVal = ((req.headers["x-admin-secret"] as string) || "").trim();
+      if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+
+      const county      = String(req.body?.county ?? "lee").toLowerCase();
+      const subAccountId = Number(req.body?.subAccountId);
+      const dryRun      = req.body?.dryRun === true;
+      const limitPerYear = Math.min(Number(req.body?.limitPerYear ?? 50000), 100000);
+
+      if (!subAccountId || isNaN(subAccountId)) {
+        return res.status(400).json({ error: "subAccountId is required" });
+      }
+
+      let years: number[] | undefined;
+      if (Array.isArray(req.body?.years) && req.body.years.length > 0) {
+        years = req.body.years.map(Number).filter((y: number) => y >= 2007 && y <= 2030);
+      }
+
+      const { ingestFDOTCountyCrashes } = await import("../fdotCrashFeed");
+
+      // Fire-and-forget — can take minutes for large counties
+      ingestFDOTCountyCrashes({ county, years, subAccountId, dryRun, limitPerYear }).catch((err: any) =>
+        console.error("[FDOT-FEED] Unhandled error in background job:", err?.message)
+      );
+
+      res.json({
+        ok: true,
+        message: `FDOT crash ingest started — county=${county} years=${years?.join(",") ?? "2015-2022"} dryRun=${dryRun}. Check server logs for progress.`,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ── Pipeline Health ───────────────────────────────────────────────────────────
   // GET /api/internal/pipeline-health
   // Admin-secret gated. Returns current status of all pipeline subsystems.
