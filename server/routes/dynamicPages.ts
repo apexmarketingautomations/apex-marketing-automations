@@ -9,7 +9,7 @@ import type { Express, Request, Response } from "express";
 import { db } from "../db";
 import { dynamicPageSchemas } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
-import { generatePageSchema, patchExistingPageSchema } from "../services/aiPromptToPageSchema";
+import { generatePageSchema, patchExistingPageSchema, generateScenePlan } from "../services/aiPromptToPageSchema";
 import { aiGenerateImage } from "../aiGateway";
 import { isPlatformAdmin } from "../auth/authorization";
 import { requireActiveSubscription } from "../subscriptionGuard";
@@ -114,6 +114,17 @@ export function registerDynamicPagesRoutes(app: Express): void {
 
     const schema = await generatePageSchema(sanitized, subAccountId, cleanImageUrl, mode);
     return res.json({ schema });
+  }));
+
+  /** Generate only the WebGL scene plan from a prompt */
+  app.post("/api/dynamic-pages/generate-scene", guard, asyncHandler(async (req: Request, res: Response) => {
+    const { prompt } = req.body as { prompt?: string };
+    if (!prompt || typeof prompt !== "string" || prompt.trim().length < 3) {
+      return res.status(400).json({ error: "prompt is required (min 3 chars)" });
+    }
+    const sanitized = prompt.trim().slice(0, 2000).replace(/<[^>]*>/g, "");
+    const scene = await generateScenePlan(sanitized);
+    return res.json({ scene });
   }));
 
   /** Patch an existing schema with a new incremental prompt */

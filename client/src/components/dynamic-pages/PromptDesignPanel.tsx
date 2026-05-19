@@ -17,6 +17,8 @@ import {
   Sparkles, RefreshCw, ChevronRight, Clock, Undo2, Redo2,
   Code, Eye, EyeOff, Loader2, CheckCircle, AlertCircle,
   Wand2, Zap, RotateCcw,
+  Image,
+  Box,
 } from "lucide-react";
 import type { DynamicPageSchema } from "@/lib/dynamic-pages/schema";
 import { applyLocalPromptPatch } from "@/lib/dynamic-pages/promptPatchEngine";
@@ -151,8 +153,56 @@ export function PromptDesignPanel({ currentSchema, onSchemaUpdate, subAccountId,
     },
   });
 
-  const isLoading = generateMutation.isPending || patchMutation.isPending;
-  const error = generateMutation.error ?? patchMutation.error;
+  const imageMutation = useMutation({
+    mutationFn: async (p: string) => {
+      if (!currentSchema) throw new Error("No schema to attach image to");
+      const res = await apiRequest("POST", "/api/dynamic-pages/generate-image", {
+        prompt: p,
+        niche: currentSchema?.meta?.niche,
+        businessType: (currentSchema?.meta as any)?.businessType,
+        style: (currentSchema?.meta as any)?.style,
+      });
+      const data = await res.json();
+      if (!data.imageUrl) throw new Error(data.error ?? "Image generation failed");
+      return data.imageUrl as string;
+    },
+    onSuccess: (imageUrl) => {
+      if (!currentSchema) return;
+      pushUndo(currentSchema);
+      onSchemaUpdate({
+        ...currentSchema,
+        scene: { ...currentSchema.scene, fallbackImage: imageUrl },
+      });
+      setLastAction("patch");
+    },
+  });
+
+  const sceneMutation = useMutation({
+    mutationFn: async (p: string) => {
+      if (!currentSchema) throw new Error("No schema to attach scene to");
+      const res = await apiRequest("POST", "/api/dynamic-pages/generate-scene", { prompt: p, subAccountId });
+      const data = await res.json();
+      if (!data.scene) throw new Error(data.error ?? "Scene generation failed");
+      return data.scene as any;
+    },
+    onSuccess: (scene) => {
+      if (!currentSchema) return;
+      pushUndo(currentSchema);
+      onSchemaUpdate({
+        ...currentSchema,
+        scene: {
+          ...currentSchema.scene,
+          ...scene,
+          // Preserve an existing fallback image unless the generator returned one.
+          fallbackImage: scene?.fallbackImage ?? currentSchema.scene?.fallbackImage,
+        },
+      });
+      setLastAction("patch");
+    },
+  });
+
+  const isLoading = generateMutation.isPending || patchMutation.isPending || imageMutation.isPending || sceneMutation.isPending;
+  const error = generateMutation.error ?? patchMutation.error ?? imageMutation.error ?? sceneMutation.error;
 
   const handleGenerate = () => {
     const p = prompt.trim();
@@ -166,6 +216,20 @@ export function PromptDesignPanel({ currentSchema, onSchemaUpdate, subAccountId,
     if (!p || isLoading || !currentSchema) return;
     saveToHistory(p);
     patchMutation.mutate(p);
+  };
+
+  const handleGenerateHeroImage = () => {
+    const p = (prompt.trim() || currentSchema?.meta?.prompt || "").trim();
+    if (!p || isLoading || !currentSchema) return;
+    saveToHistory(p);
+    imageMutation.mutate(p);
+  };
+
+  const handleGenerateScene = () => {
+    const p = (prompt.trim() || currentSchema?.meta?.prompt || "").trim();
+    if (!p || isLoading || !currentSchema) return;
+    saveToHistory(p);
+    sceneMutation.mutate(p);
   };
 
   const handleQuickPrompt = (p: string) => {
@@ -239,6 +303,28 @@ export function PromptDesignPanel({ currentSchema, onSchemaUpdate, subAccountId,
           Apply Changes
         </Button>
 
+        <Button
+          onClick={handleGenerateHeroImage}
+          disabled={!currentSchema || isLoading}
+          variant="outline"
+          className="border-slate-600 text-slate-300 hover:bg-white/5 rounded-xl"
+          title="Generate an AI hero image backdrop (renders behind the 3D scene)"
+        >
+          <Image size={15} className="mr-2" />
+          Hero Image
+        </Button>
+
+        <Button
+          onClick={handleGenerateScene}
+          disabled={!currentSchema || isLoading}
+          variant="outline"
+          className="border-slate-600 text-slate-300 hover:bg-white/5 rounded-xl"
+          title="Regenerate only the WebGL 3D scene from your prompt"
+        >
+          <Box size={15} className="mr-2" />
+          3D Scene
+        </Button>
+
         {currentSchema && (
           <Button
             onClick={() => { saveToHistory(prompt || "Regenerate"); generateMutation.mutate(prompt || currentSchema.meta.prompt); }}
@@ -269,7 +355,7 @@ export function PromptDesignPanel({ currentSchema, onSchemaUpdate, subAccountId,
             {error instanceof Error ? error.message : "Generation failed — try again"}
           </motion.div>
         )}
-        {(generateMutation.isSuccess || patchMutation.isSuccess) && !isLoading && (
+        {(generateMutation.isSuccess || patchMutation.isSuccess || imageMutation.isSuccess || sceneMutation.isSuccess) && !isLoading && (
           <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
             className="flex items-center gap-2 p-3 rounded-xl bg-green-500/10 border border-green-500/30 text-green-400 text-sm">
             <CheckCircle size={14} />

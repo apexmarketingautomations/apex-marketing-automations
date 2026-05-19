@@ -26,6 +26,7 @@ const Onboarding = lazy(() => import("@/pages/onboarding"));
 const BotTrainer = lazy(() => import("@/pages/bot-trainer"));
 const SiteBuilder = lazy(() => import("@/pages/site-builder"));
 const DynamicPages = lazy(() => import("@/pages/dynamic-pages"));
+const UnifiedBuilderPage = lazy(() => import("@/pages/builder"));
 const LiquidWebsite = lazy(() => import("@/pages/liquid-website"));
 const AdLauncher = lazy(() => import("@/pages/ad-launcher"));
 const VoiceAgent = lazy(() => import("@/pages/voice-agent"));
@@ -335,8 +336,11 @@ function Router() {
                   <Route path="/workflows" component={WorkflowBuilder} />
                   <Route path="/bot-trainer" component={BotTrainer} />
                   <Route path="/onboarding" component={Onboarding} />
-                  <Route path="/site-builder" component={SiteBuilder} />
-                  <Route path="/dynamic-pages" component={DynamicPages} />
+                  <Route path="/builder/site" component={UnifiedBuilderPage} />
+                  <Route path="/builder/pages" component={UnifiedBuilderPage} />
+                  <Route path="/builder" component={UnifiedBuilderPage} />
+                  <Route path="/site-builder"><Redirect to="/builder/site" /></Route>
+                  <Route path="/dynamic-pages"><Redirect to="/builder/pages" /></Route>
                   <Route path="/liquid" component={LiquidWebsite} />
                   <Route path="/ad-launcher" component={AdLauncher} />
                   <Route path="/voice-agent" component={VoiceAgent} />

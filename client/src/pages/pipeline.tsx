@@ -151,7 +151,21 @@ export default function PipelinePage() {
     enabled: !!subAccountId,
   });
 
-  const { data: contactsResult } = useQuery<{ items: Contact[]; data?: Contact[]; total: number; page: number; pageSize: number; totalPages: number }>({
+  const { data: contactsResult } = useQuery<{
+    items: Contact[];
+    data?: Contact[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+    metrics?: {
+      totalAll?: number;
+      hiddenUnidentified?: number;
+      totalWithPhone?: number;
+      crashLeads?: number;
+      skipTraced?: number;
+    };
+  }>({
     queryKey: ["/api/contacts", subAccountId, contactsPage, sortField, sortDir, contactSearch, contactSource, contactHasPhone, hideUnidentified],
     queryFn: async () => {
       const qp = new URLSearchParams({
@@ -164,6 +178,7 @@ export default function PipelinePage() {
       if (contactSearch) qp.set("search", contactSearch);
       if (contactSource) qp.set("source", contactSource);
       if (contactHasPhone) qp.set("hasPhone", contactHasPhone);
+      if (hideUnidentified) qp.set("hideUnidentified", "true");
       const res = await fetch(`/api/contacts/${subAccountId}?${qp.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch contacts");
       return res.json();
@@ -174,6 +189,8 @@ export default function PipelinePage() {
   const contacts = contactsResult?.items ?? contactsResult?.data ?? [];
   const contactsTotal  = contactsResult?.total      ?? contacts.length;
   const contactsTotalPages = contactsResult?.totalPages ?? 1;
+  const hiddenUnidentifiedCount = contactsResult?.metrics?.hiddenUnidentified ?? 0;
+  const allAccountContacts = contactsResult?.metrics?.totalAll ?? contactsTotal;
 
   const createStageMutation = useMutation({
     mutationFn: async (stage: { name: string; color: string; position: number }) => {
@@ -612,6 +629,11 @@ export default function PipelinePage() {
                   <CardTitle className="text-white text-lg flex items-center gap-2">
                     <Users size={18} className="text-indigo-400" />
                     Contacts ({contactsTotal.toLocaleString()})
+                    {hideUnidentified && hiddenUnidentifiedCount > 0 && allAccountContacts !== contactsTotal && (
+                      <span className="text-xs text-slate-400 font-normal ml-1">
+                        · {allAccountContacts.toLocaleString()} total
+                      </span>
+                    )}
                     {contactsTotalPages > 1 && (
                       <span className="text-xs text-slate-400 font-normal ml-1">
                         · page {contactsPage}/{contactsTotalPages}
@@ -674,7 +696,9 @@ export default function PipelinePage() {
                     }`}
                   >
                     <EyeOff size={11} />
-                    {hideUnidentified ? "Hiding unnamed crash placeholders" : "Show all contacts"}
+                    {hideUnidentified
+                      ? `Hiding ${hiddenUnidentifiedCount.toLocaleString()} unnamed crash placeholders`
+                      : "Show all contacts"}
                   </button>
                 </div>
                 {contactsTotalPages > 1 && (
@@ -731,7 +755,6 @@ export default function PipelinePage() {
                     </div>
 
                     {contacts
-                      .filter(c => !hideUnidentified || !/^Unidentified\b/i.test(c.firstName || ""))
                       .map((contact) => {
                         const isCrashLead = contact.source === "sentinel_crash" || contact.tags?.includes("Crash_Connect_Lead") || contact.tags?.includes("crash-lead");
                         const fullName = [contact.firstName, contact.lastName].filter(Boolean).join(" ");

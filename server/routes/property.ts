@@ -2744,6 +2744,7 @@ export function registerPropertyRoutes(app: Express) {
     const search   = (req.query.search as string | undefined)?.toLowerCase().trim();
     const tag      = req.query.tag as string | undefined;
     const hasPhone = req.query.hasPhone === "true";
+    const hideUnidentified = req.query.hideUnidentified === "true";
     const sortBy   = (req.query.sortBy as string | undefined) ?? "createdAt";
     const sortDir  = (req.query.sortDir as string | undefined) === "asc" ? "asc" : "desc";
 
@@ -2775,6 +2776,9 @@ export function registerPropertyRoutes(app: Express) {
       conditions.push(isNotNull(contacts.phone));
       conditions.push(ne(contacts.phone, ""));
     }
+    if (hideUnidentified) {
+      conditions.push(sql`COALESCE(${contacts.firstName}, '') !~* '^Unidentified'`);
+    }
 
     const where = and(...conditions);
 
@@ -2788,9 +2792,11 @@ export function registerPropertyRoutes(app: Express) {
     // Account-wide metrics (unfiltered — always reflect true totals)
     const [metricsRow] = await db
       .select({
+        totalAll:    sql<number>`COUNT(*)::int`,
         withPhone:  sql<number>`COUNT(*) FILTER (WHERE phone IS NOT NULL AND phone <> '')::int`,
         crashLeads: sql<number>`COUNT(*) FILTER (WHERE source = 'sentinel_crash' OR tags @> ARRAY['crash-lead']::text[])::int`,
         skipTraced: sql<number>`COUNT(*) FILTER (WHERE tags @> ARRAY['skip-traced']::text[])::int`,
+        hiddenUnidentified: sql<number>`COUNT(*) FILTER (WHERE COALESCE(first_name, '') ~* '^Unidentified')::int`,
       })
       .from(contacts)
       .where(eq(contacts.subAccountId, subAccountId));
@@ -2827,9 +2833,11 @@ export function registerPropertyRoutes(app: Express) {
       pageSize,
       totalPages,
       metrics: {
+        totalAll:       metricsRow?.totalAll    ?? 0,
         totalWithPhone: metricsRow?.withPhone  ?? 0,
         crashLeads:     metricsRow?.crashLeads ?? 0,
         skipTraced:     metricsRow?.skipTraced ?? 0,
+        hiddenUnidentified: metricsRow?.hiddenUnidentified ?? 0,
       },
     });
   }));

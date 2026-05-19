@@ -2022,12 +2022,15 @@ RULES:
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
+  const listenOptions: { port: number; host: string; reusePort?: boolean } = {
+    port,
+    host: "0.0.0.0",
+  };
+  if (process.platform !== "darwin") {
+    listenOptions.reusePort = true;
+  }
   httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
+    listenOptions,
     async () => {
       log(`serving on port ${port}`);
 
@@ -2041,26 +2044,34 @@ RULES:
 
       // ── Generic sequence audit — discovers and repairs ALL drifted sequences ──
       // Push schema using drizzle-kit
-  try {
-    const { execSync } = await import("child_process");
-    console.log("[STARTUP] Running database schema push...");
-    execSync("npx drizzle-kit push --force", { 
-      encoding: "utf8",
-      env: { ...process.env },
-      stdio: "pipe",
-    });
-    console.log("[STARTUP] ✅ Database schema push complete");
-  } catch (migErr: any) {
-    console.error("[STARTUP] Schema push failed:", migErr?.message?.slice(0, 300));
+  if (process.env.SKIP_STARTUP_DB_MAINTENANCE === "true") {
+    console.log("[STARTUP] Skipping database schema push (SKIP_STARTUP_DB_MAINTENANCE=true)");
+  } else {
+    try {
+      const { execSync } = await import("child_process");
+      console.log("[STARTUP] Running database schema push...");
+      execSync("npx drizzle-kit push --force", { 
+        encoding: "utf8",
+        env: { ...process.env },
+        stdio: "pipe",
+      });
+      console.log("[STARTUP] ✅ Database schema push complete");
+    } catch (migErr: any) {
+      console.error("[STARTUP] Schema push failed:", migErr?.message?.slice(0, 300));
+    }
   }
 
   console.error("[STARTUP] BOOT ENTRY REACHED — running sequence audit");
-      try {
-        const { auditAndRepairSequences, repairAgentTasksSequence } = await import("./startup/sequenceAudit");
-        await repairAgentTasksSequence();
-        await auditAndRepairSequences();
-      } catch (auditErr: any) {
-        console.error("[SEQ-AUDIT] FATAL — audit threw:", auditErr?.message, auditErr?.stack);
+      if (process.env.SKIP_STARTUP_DB_MAINTENANCE === "true") {
+        console.log("[SEQ-AUDIT] Skipped (SKIP_STARTUP_DB_MAINTENANCE=true)");
+      } else {
+        try {
+          const { auditAndRepairSequences, repairAgentTasksSequence } = await import("./startup/sequenceAudit");
+          await repairAgentTasksSequence();
+          await auditAndRepairSequences();
+        } catch (auditErr: any) {
+          console.error("[SEQ-AUDIT] FATAL — audit threw:", auditErr?.message, auditErr?.stack);
+        }
       }
 
       try {

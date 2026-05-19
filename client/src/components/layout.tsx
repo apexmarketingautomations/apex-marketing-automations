@@ -41,11 +41,9 @@ const navSections = [
   {
     label: "BUILDERS",
     items: [
-      { href: "/dynamic-pages", icon: Layers, label: "Page Builder" },
-      { href: "/site-builder", icon: LayoutTemplate, label: "Site Builder" },
+      { href: "/builder/site", icon: Layers, label: "3D Site Builder" },
       { href: "/form-builder", icon: LayoutTemplate, label: "Form Builder" },
       { href: "/digital-card-builder", icon: ContactRound, label: "Digital Card", requiredFeature: "digital_card" },
-      { href: "/domains", icon: Link2, label: "Domains" },
     ],
   },
   {
@@ -73,6 +71,7 @@ const navSections = [
     items: [
       { href: "/account-settings", icon: Settings, label: "Account Settings" },
       { href: "/integrations", icon: Plug, label: "Integrations" },
+      { href: "/domains", icon: Link2, label: "Domains" },
       { href: "/billing", icon: DollarSign, label: "Apex Wallet" },
       { href: "/pricing", icon: CreditCard, label: "Plans & Pricing" },
       { href: "/notification-preferences", icon: BellRing, label: "Notifications" },
