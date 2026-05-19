@@ -48,6 +48,8 @@ const ALLOWED_AGENTS = new Set([
   "content-publisher",      // services/contentPlanner/schedulerWorker.ts
   // Intelligence scoring
   "scoring-worker",         // intelligence/worker.ts
+  // Repo / platform maintenance loop
+  "mega-cycle",             // intelligence/megaCycle*.ts
   // Calendar sync
   "gcal-sync",              // googleCalendarSync.ts
 ]);
