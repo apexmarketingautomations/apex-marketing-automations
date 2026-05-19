@@ -1535,6 +1535,70 @@ export function registerPropertyRoutes(app: Express) {
     res.send(JSON.stringify(payload, null, 2));
   }));
 
+  // ─── Download police report PDF from FLHSMV ──────────────────────
+  // Proxies the actual crash report PDF (HSMV 90006) from FLHSMV through
+  // the Apex backend so the browser can download it directly. Uses the
+  // same ScrapingBee proxy as the JSON detail fetch to bypass Akamai.
+  // Same auth guards as the JSON download — sub-account ownership + sentinel plan.
+  // Falls back with 404 when the FLHSMV PDF endpoint is unreachable.
+  app.get("/api/crash-reports/:id/pdf", asyncHandler(async (req, res) => {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid report id" });
+    }
+
+    const report = await storage.getCrashReport(id);
+    if (!report) return res.status(404).json({ error: "Report not found" });
+
+    if (!report.subAccountId) {
+      return res.status(403).json({ error: "This report is not accessible through the tenant API" });
+    }
+
+    if (!(await verifyAccountOwnership(req, res, report.subAccountId))) return;
+
+    const account = await storage.getSubAccount(report.subAccountId);
+    if (!account) return res.status(404).json({ error: "Sub-account not found" });
+    if (!hasFeature(account.plan, "sentinel")) {
+      return res.status(403).json({ error: "Police report PDF requires a plan with Sentinel access" });
+    }
+
+    if (report.status !== "COMPLETED") {
+      return res.status(409).json({
+        error: `Report is ${report.status} — police report PDF is only available after FLHSMV processing completes`,
+      });
+    }
+
+    const officialReportNumber: string | undefined =
+      (report as any).officialReportNumber ??
+      (report.data as any)?.searchResult?.ReportNumber ??
+      (report.data as any)?.detail?.ReportNumber;
+
+    if (!officialReportNumber) {
+      return res.status(404).json({
+        error: "No official FLHSMV report number found — FLHSMV may not have processed this crash yet",
+      });
+    }
+
+    const { fetchReportPDF } = await import("../crashReportWorker");
+    const result = await fetchReportPDF(officialReportNumber);
+
+    if (result.type === "success") {
+      const safeName = String(officialReportNumber).replace(/[^A-Z0-9._-]/gi, "_");
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="police-report-${safeName}.pdf"`);
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.send(result.buffer);
+    }
+
+    return res.status(404).json({
+      error: "Police report PDF not yet available from FLHSMV — it may take 24–48 hours for local agencies or up to 10 days for FHP reports",
+      officialReportNumber,
+    });
+  }));
+
   app.post("/api/crash-reports/:id/data", asyncHandler(async (req, res) => {
     const user = (req as any).user;
     if (!user) return res.status(401).json({ error: "Not authenticated" });

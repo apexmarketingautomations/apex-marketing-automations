@@ -520,6 +520,47 @@ export async function fetchReportDetail(reportNumber: string): Promise<DetailRes
   }
 }
 
+// ── PDF download ─────────────────────────────────────────────────────────────
+// The FLHSMV CRR API exposes a PDF download endpoint alongside the JSON detail
+// endpoint. We try the most likely URL patterns in order. The first response
+// with Content-Type: application/pdf (or octet-stream) wins.
+const FLHSMV_PDF_CANDIDATES = [
+  `${FLHSMV_BASE}/CRRService/api/CrashReport/GetPDF`,
+  `${FLHSMV_BASE}/CRRService/api/CrashReport/DownloadReport`,
+  `${FLHSMV_BASE}/CRRService/api/CrashReport/GetDocument`,
+];
+
+export type FetchPDFResult =
+  | { type: "success"; buffer: Buffer; url: string }
+  | { type: "not_found" }
+  | { type: "error"; message: string };
+
+export async function fetchReportPDF(officialReportNumber: string): Promise<FetchPDFResult> {
+  const encoded = encodeURIComponent(officialReportNumber.trim());
+  for (const base of FLHSMV_PDF_CANDIDATES) {
+    const url = `${base}/${encoded}`;
+    try {
+      const headers = getHeaders();
+      delete headers["Content-Type"];
+      headers["Accept"] = "application/pdf,application/octet-stream,*/*";
+      const response = await fetchWithRetry(url, { method: "GET", headers });
+      if (!response.ok) continue;
+      const ct = response.headers.get("content-type") ?? "";
+      if (ct.includes("pdf") || ct.includes("octet-stream")) {
+        const ab = await response.arrayBuffer();
+        console.log(`[CRASH-WORKER] ✓ PDF fetched for ${officialReportNumber} via ${url}`);
+        return { type: "success", buffer: Buffer.from(ab), url };
+      }
+      // Some endpoints return 200 with HTML error pages — not a real PDF
+      console.log(`[CRASH-WORKER] PDF probe ${url} → 200 but content-type=${ct}, skipping`);
+    } catch (err: any) {
+      console.log(`[CRASH-WORKER] PDF probe ${url} failed: ${err.message}`);
+    }
+  }
+  console.log(`[CRASH-WORKER] No PDF endpoint matched for ${officialReportNumber}`);
+  return { type: "not_found" };
+}
+
 async function processReport(reportId: number, reportNumber: string): Promise<void> {
   console.log(`[CRASH-WORKER] Processing report ${reportNumber} (id=${reportId})`);
 
