@@ -112,7 +112,12 @@ export default function PipelinePage() {
   const [contactSearch, setContactSearch] = useState("");
   const [contactSource, setContactSource] = useState("");
   const [contactHasPhone, setContactHasPhone] = useState<"" | "true" | "false">("");
+  const [contactTag, setContactTag] = useState("");
+  const [contactSmsOptOut, setContactSmsOptOut] = useState<"" | "true" | "false">("");
+  const [contactEmailOptOut, setContactEmailOptOut] = useState<"" | "true" | "false">("");
+  const [contactChannel, setContactChannel] = useState("");
   const [hideUnidentified, setHideUnidentified] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   function handleSort(field: string) {
     if (sortField === field) {
@@ -166,7 +171,7 @@ export default function PipelinePage() {
       skipTraced?: number;
     };
   }>({
-    queryKey: ["/api/contacts", subAccountId, contactsPage, sortField, sortDir, contactSearch, contactSource, contactHasPhone, hideUnidentified],
+    queryKey: ["/api/contacts", subAccountId, contactsPage, sortField, sortDir, contactSearch, contactSource, contactHasPhone, contactTag, contactSmsOptOut, contactEmailOptOut, contactChannel, hideUnidentified],
     queryFn: async () => {
       const qp = new URLSearchParams({
         limit: "50",
@@ -178,12 +183,27 @@ export default function PipelinePage() {
       if (contactSearch) qp.set("search", contactSearch);
       if (contactSource) qp.set("source", contactSource);
       if (contactHasPhone) qp.set("hasPhone", contactHasPhone);
+      if (contactTag) qp.set("tag", contactTag);
+      if (contactSmsOptOut) qp.set("smsOptOut", contactSmsOptOut);
+      if (contactEmailOptOut) qp.set("emailOptOut", contactEmailOptOut);
+      if (contactChannel) qp.set("channel", contactChannel);
       if (hideUnidentified) qp.set("hideUnidentified", "true");
       const res = await fetch(`/api/contacts/${subAccountId}?${qp.toString()}`);
       if (!res.ok) throw new Error("Failed to fetch contacts");
       return res.json();
     },
     enabled: !!subAccountId,
+  });
+
+  const { data: contactFacets } = useQuery<{ sources: { source: string; count: number }[]; tags: { tag: string; count: number }[] }>({
+    queryKey: ["/api/contacts/facets", subAccountId],
+    queryFn: async () => {
+      const res = await fetch(`/api/contacts/${subAccountId}/facets`);
+      if (!res.ok) throw new Error("Failed to fetch facets");
+      return res.json();
+    },
+    enabled: !!subAccountId,
+    staleTime: 60_000,
   });
   // Use real total from server — never derive count from items.length
   const contacts = contactsResult?.items ?? contactsResult?.data ?? [];
@@ -663,19 +683,19 @@ export default function PipelinePage() {
                         </button>
                       )}
                     </div>
-                    {/* Source filter */}
+                    {/* Source filter (quick) */}
                     <select
                       value={contactSource}
                       onChange={e => { setContactSource(e.target.value); setContactsPage(1); }}
                       className="h-8 px-2 rounded-md text-xs font-medium bg-white/5 border border-white/10 text-slate-300 focus:outline-none"
                     >
                       <option value="">All Sources</option>
-                      <option value="sentinel_crash">Crash Leads</option>
-                      <option value="property_radar">Property Radar</option>
-                      <option value="meta_ads">Meta Ads</option>
-                      <option value="manual">Manual</option>
+                      {(contactFacets?.sources || []).slice(0, 12).map((s) => (
+                        <option key={s.source} value={s.source}>{s.source} ({s.count})</option>
+                      ))}
                     </select>
-                    {/* Has phone filter */}
+
+                    {/* Has phone filter (quick) */}
                     <select
                       value={contactHasPhone}
                       onChange={e => { setContactHasPhone(e.target.value as "" | "true" | "false"); setContactsPage(1); }}
@@ -685,6 +705,104 @@ export default function PipelinePage() {
                       <option value="true">Has Phone</option>
                       <option value="false">No Phone</option>
                     </select>
+
+                    {/* More filters */}
+                    <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
+                      <DialogTrigger asChild>
+                        <Button
+                          variant="secondary"
+                          className="h-8 text-xs bg-white/5 hover:bg-white/10 border border-white/10 text-white"
+                          data-testid="button-contact-filters"
+                        >
+                          <Filter size={14} className="mr-1" /> Filters
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="bg-neutral-950 border-white/10 text-white">
+                        <DialogHeader>
+                          <DialogTitle>Contact Filters</DialogTitle>
+                        </DialogHeader>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-xs text-slate-300">Tag</Label>
+                            <Input
+                              value={contactTag}
+                              onChange={(e) => { setContactTag(e.target.value); setContactsPage(1); }}
+                              placeholder="e.g. crash-lead"
+                              list="contact-tags"
+                              className="h-9 text-xs bg-white/5 border-white/10 text-white placeholder:text-slate-600"
+                            />
+                            <datalist id="contact-tags">
+                              {(contactFacets?.tags || []).slice(0, 60).map((t) => (
+                                <option key={t.tag} value={t.tag} />
+                              ))}
+                            </datalist>
+                          </div>
+
+                          <div>
+                            <Label className="text-xs text-slate-300">Channel</Label>
+                            <select
+                              value={contactChannel}
+                              onChange={(e) => { setContactChannel(e.target.value); setContactsPage(1); }}
+                              className="h-9 w-full px-2 rounded-md text-xs font-medium bg-white/5 border border-white/10 text-slate-300 focus:outline-none"
+                            >
+                              <option value="">All</option>
+                              <option value="sms">SMS</option>
+                              <option value="email">Email</option>
+                              <option value="form">Form</option>
+                              <option value="meta">Meta</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <Label className="text-xs text-slate-300">SMS Opt-Out</Label>
+                            <select
+                              value={contactSmsOptOut}
+                              onChange={(e) => { setContactSmsOptOut(e.target.value as any); setContactsPage(1); }}
+                              className="h-9 w-full px-2 rounded-md text-xs font-medium bg-white/5 border border-white/10 text-slate-300 focus:outline-none"
+                            >
+                              <option value="">Any</option>
+                              <option value="false">SMS Subscribed</option>
+                              <option value="true">SMS Opted Out</option>
+                            </select>
+                          </div>
+
+                          <div>
+                            <Label className="text-xs text-slate-300">Email Opt-Out</Label>
+                            <select
+                              value={contactEmailOptOut}
+                              onChange={(e) => { setContactEmailOptOut(e.target.value as any); setContactsPage(1); }}
+                              className="h-9 w-full px-2 rounded-md text-xs font-medium bg-white/5 border border-white/10 text-slate-300 focus:outline-none"
+                            >
+                              <option value="">Any</option>
+                              <option value="false">Email Subscribed</option>
+                              <option value="true">Email Opted Out</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 mt-2">
+                          <Button
+                            variant="secondary"
+                            className="bg-white/5 hover:bg-white/10 border border-white/10 text-white"
+                            onClick={() => {
+                              setContactSource("");
+                              setContactHasPhone("");
+                              setContactTag("");
+                              setContactSmsOptOut("");
+                              setContactEmailOptOut("");
+                              setContactChannel("");
+                              setContactsPage(1);
+                            }}
+                          >
+                            Clear
+                          </Button>
+                          <Button className="bg-cyan-600 hover:bg-cyan-500 text-white" onClick={() => setFiltersOpen(false)}>
+                            Done
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   </div>
                   {/* Hide unidentified toggle */}
                   <button

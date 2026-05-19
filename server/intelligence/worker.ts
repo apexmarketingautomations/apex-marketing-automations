@@ -168,6 +168,15 @@ export function startIntelligenceWorkers(): void {
 
   startRollupWorker(15 * 60 * 1000);
 
+  // Mega Cycle is an optional, disciplined autonomy loop that runs alongside
+  // Apex Intelligence. It is intentionally off by default; enable via env vars.
+  try {
+    import("./megaCycleJob").then((mod) => mod.registerMegaCycleJobHandler()).catch(() => {});
+    import("./megaCycleScheduler").then((mod) => mod.startMegaCycleScheduler()).catch(() => {});
+  } catch (err) {
+    // allow-silent-catch: optional subsystem
+  }
+
   subscribeToModuleGroups();
 
   seedModuleEventRegistry().catch(err => {

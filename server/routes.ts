@@ -50,6 +50,7 @@ import { registerMetaMessagingProductRoutes } from "./routes/metaMessagingProduc
 import { registerMediaRoutes } from "./routes/media";
 import { registerChaturbateRoutes } from "./routes/chaturbate";
 import { registerApexIntelligenceRoutes } from "./routes/apex-intelligence";
+import { registerMegaCycleRoutes } from "./routes/mega-cycle";
 import { registerSiteTrackingRoutes } from "./routes/siteTracking";
 import { registerTrackingRoutes } from "./routes/tracking";
 import { registerPublicFormsRoutes } from "./routes/publicForms";
@@ -394,6 +395,7 @@ export async function registerRoutes(
   registerMediaRoutes(app);
   registerChaturbateRoutes(app);
   registerApexIntelligenceRoutes(app);
+  registerMegaCycleRoutes(app);
   registerSiteTrackingRoutes(app);
   registerTrackingRoutes(app);
   registerPublicFormsRoutes(app);
