@@ -832,6 +832,14 @@ async function validateMetaCredentials() {
   } catch (retroErr: any) {
     console.error("[STARTUP] Retro skip trace scheduler failed (non-fatal):", retroErr?.message);
   }
+
+  try {
+    const { startSentinelFollowupScheduler } = await import("./crashIngestPipeline");
+    startSentinelFollowupScheduler();
+    console.log("[STARTUP] ✅ Sentinel follow-up scheduler started — creates FLHSMV lookup jobs for AWAITING crash reports (every 4h)");
+  } catch (followupErr: any) {
+    console.error("[STARTUP] Sentinel follow-up scheduler failed to start (non-fatal):", followupErr?.message);
+  }
   }
 
   // Phase 11 — Enterprise Control Center startup

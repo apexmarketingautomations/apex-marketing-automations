@@ -96,7 +96,7 @@ export async function runRetroFLHSMVEnrich(options: {
     .where(
       and(
         isNotNull(crashReports.officialReportNumber),
-        eq(crashReports.status, "COMPLETE"),
+        eq(crashReports.status, "COMPLETED"),
       )
     )
     .limit(limit);

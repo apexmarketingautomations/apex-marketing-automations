@@ -1409,7 +1409,7 @@ export function registerRetroSkipTraceRoute(app: any) {
       const [pending, processing, complete, notFound, failed] = await Promise.all([
         db.select({ n: count() }).from(crashReports).where(eq(crashReports.status, "PENDING")),
         db.select({ n: count() }).from(crashReports).where(eq(crashReports.status, "PROCESSING")),
-        db.select({ n: count() }).from(crashReports).where(eq(crashReports.status, "COMPLETE")),
+        db.select({ n: count() }).from(crashReports).where(eq(crashReports.status, "COMPLETED")),
         db.select({ n: count() }).from(crashReports).where(eq(crashReports.status, "NOT_FOUND")),
         db.select({ n: count() }).from(crashReports).where(eq(crashReports.status, "FAILED")),
       ]);
@@ -1417,7 +1417,7 @@ export function registerRetroSkipTraceRoute(app: any) {
       // FLHSMV enrichment counts
       const [completeWithOfficial, alreadyEnriched] = await Promise.all([
         db.select({ n: count() }).from(crashReports).where(
-          and(eq(crashReports.status, "COMPLETE"), isNotNull(crashReports.officialReportNumber))
+          and(eq(crashReports.status, "COMPLETED"), isNotNull(crashReports.officialReportNumber))
         ),
         // Contacts tagged flhsmv-enriched (approximate count via SQL array contains)
         db.execute(
