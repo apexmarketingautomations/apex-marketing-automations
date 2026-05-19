@@ -780,6 +780,14 @@ async function validateMetaCredentials() {
   }
 
   try {
+    const { startClerkTrafficScheduler } = await import("./clerkTrafficEnrich");
+    startClerkTrafficScheduler();
+    console.log("[STARTUP] ✅ Clerk Traffic enrichment started — SWFL crash name recovery (LEE/COLLIER/CHARLOTTE, every 6h)");
+  } catch (clerkErr: any) {
+    console.error("[STARTUP] Clerk Traffic enrichment failed to start (non-fatal):", clerkErr?.message);
+  }
+
+  try {
     const { startHillsboroughRecordsScheduler } = await import("./hillsboroughRecordsPipeline");
     startHillsboroughRecordsScheduler();
     console.log("[STARTUP] ✅ Hillsborough Official Records pipeline started — lis pendens + judgments (daily at 06:00 ET)");

@@ -1305,6 +1305,62 @@ export function registerRetroSkipTraceRoute(app: any) {
     }
   });
 
+  // ── Retro Clerk-of-Courts Traffic Enrichment ─────────────────────────────────
+  // POST /api/internal/retro-clerk-enrich
+  //
+  // LAYER 2 — the FLHSMV-independent name-recovery path. Runs the Apify clerk
+  // traffic-citation scrape for Lee/Collier/Charlotte, upserts each crash-related
+  // citation as a verified-name "clerk_traffic" lead, and (optionally) reports
+  // scored back-fill matches against the existing placeholder crash backlog.
+  //
+  // Body: { counties?: ["LEE"|"COLLIER"|"CHARLOTTE"], daysBack?: number,
+  //         dryRun?: boolean }
+  //
+  // dryRun (DEFAULT TRUE): scrape + score placeholder matches, write NOTHING.
+  // dryRun=false: also upsert the standalone clerk_traffic leads. Placeholder
+  // back-fill is always reported, never auto-applied — wrong linkage is worse
+  // than no linkage (see clerkTrafficEnrich.scoreClerkMatch).
+
+  app.post("/api/internal/retro-clerk-enrich", async (req: any, res: any) => {
+    try {
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured" });
+      const headerVal = ((req.headers["x-admin-secret"] as string) || "").trim();
+      if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+
+      const dryRun = req.body?.dryRun !== false; // default TRUE — safe by default
+      const daysBack = Math.min(Number(req.body?.daysBack ?? 7), 90);
+      const counties = Array.isArray(req.body?.counties) ? req.body.counties : undefined;
+
+      const { runClerkTrafficEnrich } = await import("../clerkTrafficEnrich");
+
+      if (dryRun) {
+        return res.json({
+          ok: true,
+          dryRun: true,
+          message:
+            "Dry run — clerk traffic enrichment not executed. " +
+            "POST with { dryRun: false } to scrape and upsert clerk_traffic leads.",
+          wouldScrape: counties ?? ["LEE", "COLLIER", "CHARLOTTE"],
+          daysBack,
+        });
+      }
+
+      const stats = await runClerkTrafficEnrich({ counties, daysBack });
+      const totalLeads = stats.reduce((s: number, x: any) => s + x.leadsUpserted, 0);
+      res.json({
+        ok: true,
+        dryRun: false,
+        totalLeads,
+        perCounty: stats,
+        message: `Clerk traffic enrichment complete — ${totalLeads} verified-name lead(s) upserted.`,
+      });
+    } catch (err: any) {
+      console.error("[RETRO-CLERK-ENRICH] Error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ── Retro FLHSMV Enrichment ──────────────────────────────────────────────────
   // POST /api/internal/retro-flhsmv-enrich
   // Fire-and-forget: triggers retroactive FLHSMV enrichment for contacts that
