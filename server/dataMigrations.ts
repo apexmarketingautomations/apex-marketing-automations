@@ -1261,6 +1261,37 @@ const MIGRATIONS: DataMigration[] = [
         ADD COLUMN IF NOT EXISTS consolidated_at          TIMESTAMP;
     `,
   },
+  {
+    // Clean up legacy contacts whose contact.address contains a highway/intersection
+    // string (e.g. "I-75 SB [MM224]"). These were created before the
+    // victim-centric address architecture (v2, 2026-05-16) when the crash ingest
+    // pipeline wrote incident.location directly to contact.address.
+    //
+    // Fix: move the highway string to incidentLocation (if not already set),
+    // then null out contact.address and reset addressConfidence to 0.15
+    // (INCIDENT_LOCATION tier) so skip-trace and export gates behave correctly.
+    //
+    // The regex matches Florida highway patterns with multi-digit road numbers:
+    // I-75, US-41, SR-82, CR-951, FL-80, MM224, INTERSTATE, HIGHWAY, HWY
+    name: "2026-05-19-clear-highway-addresses-from-contacts",
+    sql: `
+      -- Step 1: copy highway address into incidentLocation where it is still blank
+      UPDATE contacts
+      SET    incident_location = address
+      WHERE  address IS NOT NULL
+        AND  incident_location IS NULL
+        AND  address ~* '\\m(I-\\d+|US-\\d+|SR-\\d+|CR-\\d+|FL-\\d+|MM\\s*\\d+|INTERSTATE|HIGHWAY|HWY)\\M';
+
+      -- Step 2: clear the highway string from contact.address
+      UPDATE contacts
+      SET    address            = NULL,
+             formatted_address  = NULL,
+             address_confidence = 0.15,
+             address_type       = 'incident_location'
+      WHERE  address IS NOT NULL
+        AND  address ~* '\\m(I-\\d+|US-\\d+|SR-\\d+|CR-\\d+|FL-\\d+|MM\\s*\\d+|INTERSTATE|HIGHWAY|HWY)\\M';
+    `,
+  },
 ];
 
 export async function runDataMigrations(): Promise<void> {

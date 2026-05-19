@@ -19,6 +19,14 @@ import type { SentinelIncident } from "@shared/schema";
 
 // ── Utility helpers ────────────────────────────────────────────────────────────
 
+/** Returns true when an address string looks like a highway/intersection.
+ *  Mirrors the server-side looksLikeHighwayAddress() check — keeps the UI
+ *  from displaying crash scenes as "Driver Home Address". */
+function isHighwayAddress(address: string | null | undefined): boolean {
+  if (!address || address.trim().length < 3) return false;
+  return /\b(I-\d+|US-\d+|SR-\d+|CR-\d+|FL-\d+|MM\s*\d+|INTERSTATE|HIGHWAY|HWY)\b/i.test(address);
+}
+
 function parseRaw(raw: unknown): Record<string, any> {
   if (raw && typeof raw === "object") return raw as Record<string, any>;
   try { return JSON.parse(raw as string); } catch (_e) { return {}; }
@@ -902,7 +910,7 @@ function LeadCommandCenter({ accountId, isAdmin, onSkipTrace, skipTraceRunning }
                                   <span className="text-blue-400 text-xs">{contact.email}</span>
                                 </div>
                               )}
-                              {contact.address && (
+                              {contact.address && !isHighwayAddress(contact.address) && (
                                 <div className="flex items-start gap-2">
                                   <MapPin size={12} className="text-slate-400 shrink-0 mt-0.5" />
                                   <div>

@@ -282,7 +282,9 @@ export const PHONE_CONFIDENCE = {
  */
 export function looksLikeHighwayAddress(address: string | null | undefined): boolean {
   if (!address || address.trim().length < 3) return false;
-  return /\b(I-\d|US-\d{1,3}|SR-\d|CR-\d|FL-\d|MM\s*\d|INTERSTATE|HIGHWAY\s+\d|HWY\s+\d|MILE\s+MARKER)\b/i.test(address);
+  // Use \d+ (one or more digits) so multi-digit highways like I-75, SR-82, US-41
+  // are correctly detected. The previous \d (single digit) only matched I-1…I-9.
+  return /\b(I-\d+|US-\d+|SR-\d+|CR-\d+|FL-\d+|MM\s*\d+|INTERSTATE|HIGHWAY\s+\d+|HWY\s+\d+|MILE\s+MARKER)\b/i.test(address);
 }
 
 /**
@@ -329,6 +331,21 @@ export function buildCrashPlaceholderName(county: string | null | undefined): {
 // ---- Core upsert function ----
 
 export async function upsertContact(input: ContactUpsertInput): Promise<ContactUpsertResult> {
+  // ── Defensive highway address guard ──────────────────────────────────────
+  // If any caller accidentally passes a roadway/intersection string as
+  // input.address, intercept it here — before it touches baseValues or
+  // mergeContact — and route it to incidentLocation instead.
+  // This is the last line of defence; callers should already filter via
+  // looksLikeHighwayAddress(), but we enforce it unconditionally here.
+  if (looksLikeHighwayAddress(input.address)) {
+    console.warn(
+      `[UPSERT-GUARD] Highway string detected in input.address — redirecting to incidentLocation. ` +
+      `source=${input.source} address="${input.address}"`
+    );
+    if (!input.incidentLocation) input = { ...input, incidentLocation: input.address };
+    input = { ...input, address: null, addressConfidence: ADDRESS_CONFIDENCE.INCIDENT_LOCATION, addressType: "incident_location" };
+  }
+
   const {
     subAccountId,
     source,

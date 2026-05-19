@@ -238,7 +238,8 @@ async function createLeadFromCrash(
     // BatchData returns no_match on these 100% of the time and wastes credits.
     // Real skip-trace runs later in enrichCrashLeadContacts() using the
     // driver's HOME address from the FLHSMV official report.
-    const looksLikeHighway = /\b(I-\d|US-\d|SR-\d|CR-\d|FL-\d|MM\s*\d|INTERSTATE|HIGHWAY|HWY)\b/i.test(incident.location || "");
+    // Use \d+ so multi-digit FL highways (I-75, SR-82, US-41, MM224) are caught.
+    const looksLikeHighway = /\b(I-\d+|US-\d+|SR-\d+|CR-\d+|FL-\d+|MM\s*\d+|INTERSTATE|HIGHWAY|HWY)\b/i.test(incident.location || "");
     if (batchDataKey && incident.location && !looksLikeHighway) {
       enrichmentAttemptedAt = new Date();
       try {
