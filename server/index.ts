@@ -26,6 +26,7 @@ import { runStartupChecks } from "./startupChecks";
 import { logSystemError, logSystemEvent } from "./systemLogger";
 import { clearLaylaCache } from "./services/laylaAccountResolver";
 import { ensureAccountsUnprotected } from "./startupPatches";
+import { getStitchApiKey } from "./stitchApi";
 
 function isRedisQuotaError(reason: any): boolean {
   const s = `${reason?.message ?? ""} ${String(reason)}`;
@@ -1872,7 +1873,6 @@ RULES:
   const { registerEnterpriseAdminRoutes } = await import("./routes/enterpriseAdmin");
   registerEnterpriseAdminRoutes(app);
 
-
   await setupAuth(app);
 
   // Admin-secret bypass: when an internal/trusted caller (e.g. the Apex
@@ -2033,6 +2033,10 @@ RULES:
     listenOptions,
     async () => {
       log(`serving on port ${port}`);
+
+      // Warn once at startup if Stitch is not configured (server-only secret).
+      // Do not log the key value.
+      getStitchApiKey();
 
       // ── Create new tables if they don't exist yet ─────────────────────────
       try {

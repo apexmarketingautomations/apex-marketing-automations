@@ -8,7 +8,8 @@
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
-    "check": "tsc",
+    "check": "NODE_OPTIONS=\"--max-old-space-size=4096\" tsc",
+    "check:secrets": "node scripts/check-secrets.mjs",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
