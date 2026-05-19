@@ -184,13 +184,48 @@ export function normalizeEmail(raw: string | null | undefined): string | null {
 }
 
 const PLACEHOLDER_PATTERNS = [
+  // Internal platform placeholder names
   /^crash lead$/i,
   /^unidentified/i,
-  /^unknown$/i,
-  /^vehicle crash$/i,
   /^incident lead$/i,
   /^legal lead$/i,
   /^booking lead$/i,
+  /^vehicle crash$/i,
+
+  // Generic "unknown" variants
+  /^unknown$/i,
+  /^unknown\s+(driver|operator|person|victim|subject|male|female|individual)/i,
+  /^no\s+(name|id|info|record)/i,
+  /^n\/?a$/i,
+  /^none$/i,
+  /^null$/i,
+
+  // FLHSMV / government report non-person strings
+  /^driver\s+\d+$/i,           // "DRIVER 1", "DRIVER 2"
+  /^occupant\s+\d+$/i,         // "OCCUPANT 1"
+  /^witness\s+\d*$/i,          // "WITNESS", "WITNESS 1"
+  /^pedestrian$/i,
+  /^pedestrian\s+\d*$/i,       // "PEDESTRIAN 1"
+  /^bicyclist$/i,
+  /^motorcyclist$/i,
+  /^passenger\s+\d*$/i,
+  /^driver\s+deceased$/i,
+  /^deceased\s+driver$/i,
+  /^unlicensed\s+driver$/i,
+  /^no\s+valid\s+dl$/i,
+  /^no\s+valid\s+license$/i,
+  /^commercial\s+vehicle/i,
+  /^company\s+vehicle/i,
+  /^government\s+vehicle/i,
+
+  // Crash/incident type strings that can leak from CAD feeds
+  /^(injury|fatal|property damage|hit and run|rear.?end|rollover|head.?on|side.?swipe)\s+(crash|accident|collision)$/i,
+  /^crash\s+(type|incident|report|lead)$/i,
+  /^(injury|fatal|minor)\s+crash$/i,
+  /^traffic\s+(crash|incident|stop)$/i,
+  /^test\b/i,                  // "Test", "Test User", "Test Vehicle"
+  /^john\s+doe$/i,
+  /^jane\s+doe$/i,
 ];
 
 export function isPlaceholderName(name: string | null | undefined): boolean {
@@ -282,7 +317,9 @@ export const PHONE_CONFIDENCE = {
  */
 export function looksLikeHighwayAddress(address: string | null | undefined): boolean {
   if (!address || address.trim().length < 3) return false;
-  return /\b(I-\d|US-\d{1,3}|SR-\d|CR-\d|FL-\d|MM\s*\d|INTERSTATE|HIGHWAY\s+\d|HWY\s+\d|MILE\s+MARKER)\b/i.test(address);
+  // Use \d+ (one or more digits) so multi-digit highways like I-75, SR-82, US-41
+  // are correctly detected. The previous \d (single digit) only matched I-1…I-9.
+  return /\b(I-\d+|US-\d+|SR-\d+|CR-\d+|FL-\d+|MM\s*\d+|INTERSTATE|HIGHWAY\s+\d+|HWY\s+\d+|MILE\s+MARKER)\b/i.test(address);
 }
 
 /**
@@ -329,6 +366,21 @@ export function buildCrashPlaceholderName(county: string | null | undefined): {
 // ---- Core upsert function ----
 
 export async function upsertContact(input: ContactUpsertInput): Promise<ContactUpsertResult> {
+  // ── Defensive highway address guard ──────────────────────────────────────
+  // If any caller accidentally passes a roadway/intersection string as
+  // input.address, intercept it here — before it touches baseValues or
+  // mergeContact — and route it to incidentLocation instead.
+  // This is the last line of defence; callers should already filter via
+  // looksLikeHighwayAddress(), but we enforce it unconditionally here.
+  if (looksLikeHighwayAddress(input.address)) {
+    console.warn(
+      `[UPSERT-GUARD] Highway string detected in input.address — redirecting to incidentLocation. ` +
+      `source=${input.source} address="${input.address}"`
+    );
+    if (!input.incidentLocation) input = { ...input, incidentLocation: input.address };
+    input = { ...input, address: null, addressConfidence: ADDRESS_CONFIDENCE.INCIDENT_LOCATION, addressType: "incident_location" };
+  }
+
   const {
     subAccountId,
     source,

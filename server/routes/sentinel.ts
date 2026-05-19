@@ -1166,6 +1166,145 @@ export function registerRetroSkipTraceRoute(app: any) {
     }
   });
 
+  // ── Retro Sentinel Follow-up Spawner ─────────────────────────────────────────
+  // POST /api/internal/retro-sentinel-followup
+  //
+  // THE MISSING BRIDGE: sentinel_auto rows sit AWAITING forever because nothing
+  // creates the sentinel_followup child jobs the crash worker needs to fire
+  // FLHSMV searches. This endpoint fixes the backlog:
+  //
+  //   1. Finds AWAITING sentinel_auto reports older than minAgeHours (default 24h,
+  //      since FLHSMV reports typically appear 1–3 days after the crash is filed)
+  //   2. Skips any that already have a sentinel_followup child (idempotent)
+  //   3. Creates sentinel_followup rows with the county/date/location metadata
+  //      the crashReportWorker needs to call searchReportByCountyDate()
+  //   4. The existing crashReportWorker picks up the PENDING followups on its
+  //      next tick, calls FLHSMV, recovers driver name/address, and enriches contacts
+  //
+  // Safe to call repeatedly — idempotency guard prevents duplicate followups.
+
+  app.post("/api/internal/retro-sentinel-followup", async (req: any, res: any) => {
+    try {
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured" });
+      const headerVal   = ((req.headers["x-admin-secret"] as string) || "").trim();
+      if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+
+      const limit      = Math.min(Number(req.body?.limit ?? 500), 5000);
+      const minAgeHours = Number(req.body?.minAgeHours ?? 24);
+      const dryRun     = req.body?.dryRun === true;
+
+      const { db }          = await import("../db");
+      const { crashReports } = await import("@shared/schema");
+      const { eq, and, lt, sql: drizzleSql, isNull } = await import("drizzle-orm");
+      const { storage }     = await import("../storage");
+
+      const cutoff = new Date(Date.now() - minAgeHours * 60 * 60 * 1000);
+
+      // Pull AWAITING sentinel_auto parents older than cutoff
+      const parents = await db
+        .select({
+          id:            crashReports.id,
+          reportNumber:  crashReports.reportNumber,
+          subAccountId:  crashReports.subAccountId,
+          data:          crashReports.data,
+        })
+        .from(crashReports)
+        .where(
+          and(
+            eq(crashReports.source, "sentinel_auto"),
+            eq(crashReports.status, "AWAITING"),
+            lt(crashReports.createdAt, cutoff),
+          )
+        )
+        .limit(limit);
+
+      console.log(`[RETRO-FOLLOWUP] Found ${parents.length} AWAITING sentinel_auto reports older than ${minAgeHours}h`);
+
+      let created = 0;
+      let skipped = 0;
+
+      for (const parent of parents) {
+        const meta = parent.data as Record<string, any> | null ?? {};
+        const county    = meta.county    as string | undefined;
+        const received  = meta.received  as string | undefined;
+        const location  = meta.location  as string | undefined;
+        const lat       = meta.lat       as number | undefined;
+        const lng       = meta.lng       as number | undefined;
+
+        if (!county || !received) {
+          console.warn(`[RETRO-FOLLOWUP] Parent ${parent.id} missing county/received — skipping`);
+          skipped++;
+          continue;
+        }
+
+        // Idempotency: skip if a followup already exists for this parent
+        const followupKey = `FLHSMV-FOLLOWUP-${parent.reportNumber}`;
+        const existing = await db
+          .select({ id: crashReports.id })
+          .from(crashReports)
+          .where(
+            and(
+              eq(crashReports.reportNumber, followupKey),
+              eq(crashReports.source, "sentinel_followup"),
+            )
+          )
+          .limit(1);
+
+        if (existing.length > 0) {
+          skipped++;
+          continue;
+        }
+
+        if (dryRun) {
+          created++;
+          continue;
+        }
+
+        // Create the sentinel_followup child — the crash worker picks this up
+        await storage.createCrashReport({
+          reportNumber:  followupKey,
+          source:        "sentinel_followup",
+          status:        "PENDING",
+          subAccountId:  parent.subAccountId ?? undefined,
+          retryCount:    0,
+          serviceFailureCount: 0,
+          data: {
+            sentinelReportId: parent.id,
+            sentinelReportNumber: parent.reportNumber,
+            county,
+            crashDate: received.split("T")[0],   // "YYYY-MM-DD" for FLHSMV date filter
+            location:  location ?? "",
+            lat:       lat   ?? null,
+            lng:       lng   ?? null,
+            received:  received,
+            spawnedBy: "retro-sentinel-followup",
+            spawnedAt: new Date().toISOString(),
+          },
+        });
+
+        created++;
+        if (created % 50 === 0) {
+          console.log(`[RETRO-FOLLOWUP] Created ${created} follow-up jobs so far...`);
+        }
+      }
+
+      console.log(`[RETRO-FOLLOWUP] Done — created=${created} skipped=${skipped} dryRun=${dryRun}`);
+      res.json({
+        ok:      true,
+        created,
+        skipped,
+        dryRun,
+        message: dryRun
+          ? `Dry run: would create ${created} sentinel_followup jobs`
+          : `Created ${created} follow-up FLHSMV lookup jobs. Crash worker will process them on next tick.`,
+      });
+    } catch (err: any) {
+      console.error("[RETRO-FOLLOWUP] Error:", err.message);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ── Retro FLHSMV Enrichment ──────────────────────────────────────────────────
   // POST /api/internal/retro-flhsmv-enrich
   // Fire-and-forget: triggers retroactive FLHSMV enrichment for contacts that

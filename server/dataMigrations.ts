@@ -1261,6 +1261,75 @@ const MIGRATIONS: DataMigration[] = [
         ADD COLUMN IF NOT EXISTS consolidated_at          TIMESTAMP;
     `,
   },
+  {
+    // Clean up legacy contacts whose contact.address contains a highway/intersection
+    // string (e.g. "I-75 SB [MM224]"). These were created before the
+    // victim-centric address architecture (v2, 2026-05-16) when the crash ingest
+    // pipeline wrote incident.location directly to contact.address.
+    //
+    // Fix: move the highway string to incidentLocation (if not already set),
+    // then null out contact.address and reset addressConfidence to 0.15
+    // (INCIDENT_LOCATION tier) so skip-trace and export gates behave correctly.
+    //
+    // The regex matches Florida highway patterns with multi-digit road numbers:
+    // I-75, US-41, SR-82, CR-951, FL-80, MM224, INTERSTATE, HIGHWAY, HWY
+    name: "2026-05-19-clear-highway-addresses-from-contacts",
+    sql: `
+      -- Step 1: copy highway address into incidentLocation where it is still blank
+      UPDATE contacts
+      SET    incident_location = address
+      WHERE  address IS NOT NULL
+        AND  incident_location IS NULL
+        AND  address ~* '\\m(I-\\d+|US-\\d+|SR-\\d+|CR-\\d+|FL-\\d+|MM\\s*\\d+|INTERSTATE|HIGHWAY|HWY)\\M';
+
+      -- Step 2: clear the highway string from contact.address
+      UPDATE contacts
+      SET    address            = NULL,
+             formatted_address  = NULL,
+             address_confidence = 0.15,
+             address_type       = 'incident_location'
+      WHERE  address IS NOT NULL
+        AND  address ~* '\\m(I-\\d+|US-\\d+|SR-\\d+|CR-\\d+|FL-\\d+|MM\\s*\\d+|INTERSTATE|HIGHWAY|HWY)\\M';
+    `,
+  },
+  {
+    name: "2026-05-19-reset-crash-type-names-to-placeholder",
+    sql: `
+      -- Reset contacts whose first_name contains a crash-type descriptor or
+      -- FLHSMV non-person string rather than a real human name.
+      -- These were created when the crash ingest pipeline accepted BatchData
+      -- names from highway-address lookups (nearby residents/businesses)
+      -- or when FLHSMV returned a non-person identifier.
+      -- Fix: revert them to the standard placeholder so the FLHSMV enrichment
+      -- worker can overwrite with the real driver name on next run.
+      UPDATE contacts
+      SET    first_name      = 'Unidentified Crash Incident',
+             last_name       = CASE
+               -- last_name often carries "COUNTY — crash type" — keep just the county prefix
+               WHEN last_name ~ ' — '
+                 THEN CONCAT('— ', SPLIT_PART(last_name, ' — ', 1))
+               ELSE CONCAT('— ', UPPER(COALESCE(NULLIF(county, ''), 'UNKNOWN')))
+             END,
+             is_placeholder  = TRUE,
+             view_class      = 'placeholder',
+             identity_status = 'placeholder'
+      WHERE  source IN ('crash', 'sentinel_crash', 'crash_lead')
+        AND  (
+               first_name ~* '^crash lead$'
+            OR first_name ~* '^(unknown|no name|n/a|none|null)$'
+            OR first_name ~* '^(driver|occupant|passenger|witness|pedestrian|bicyclist|motorcyclist)\\s*\\d*$'
+            OR first_name ~* '^(driver\\s+deceased|deceased\\s+driver|unlicensed\\s+driver|no\\s+valid\\s+(dl|license))$'
+            OR first_name ~* '^(commercial|company|government)\\s+vehicle'
+            OR first_name ~* '^(injury|fatal|property\\s+damage|hit\\s+and\\s+run|rear.?end|rollover|head.?on)\\s+(crash|accident|collision)$'
+            OR first_name ~* '^(injury|fatal|minor)\\s+crash$'
+            OR first_name ~* '^traffic\\s+(crash|incident|stop)$'
+            OR first_name ~* '^test\\b'
+            OR first_name ~* '^(john|jane)\\s+doe$'
+        )
+        AND  COALESCE(NULLIF(phone, ''), NULL) IS NULL
+        AND  COALESCE(NULLIF(email, ''), NULL) IS NULL;
+    `,
+  },
 ];
 
 export async function runDataMigrations(): Promise<void> {

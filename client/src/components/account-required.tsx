@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useAccount } from "@/hooks/use-account";
+import { useAccount, getPrimaryAccountId } from "@/hooks/use-account";
 import type { SubAccount } from "@shared/schema";
 import { Building2, Plus } from "lucide-react";
 import { Link } from "wouter";
@@ -52,7 +52,7 @@ export function AccountRequired({ children }: AccountRequiredProps) {
 
   if (!activeAccountId || !accounts.find(a => a.id === activeAccountId)) {
     if (accounts.length > 0 && !activeAccountId) {
-      setActiveAccountId(accounts[0].id);
+      setActiveAccountId(getPrimaryAccountId(accounts)!);
     }
   }
 
@@ -64,6 +64,5 @@ export function useActiveSubAccountId(): number | null {
   const { data: accounts = [] } = useQuery<SubAccount[]>({ queryKey: ["/api/accounts"] });
   const match = accounts.find(a => a.id === activeAccountId);
   if (match) return match.id;
-  if (accounts.length > 0) return accounts[0].id;
-  return null;
+  return getPrimaryAccountId(accounts);
 }

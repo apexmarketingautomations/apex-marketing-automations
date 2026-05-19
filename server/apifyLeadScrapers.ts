@@ -21,7 +21,7 @@
 import crypto from "crypto";
 import { db } from "./db";
 import { subAccounts } from "@shared/schema";
-import { resolveApifyToken, recordApifyRun } from "./vendorConfig";
+import { resolveApifyToken, recordApifyRun, ENRICHMENT_ACCOUNT_IDS } from "./vendorConfig";
 import { upsertContact, CONTACT_SOURCES } from "./services/contactUpsertService";
 
 // ── Apify shared helpers ──────────────────────────────────────────────────────
@@ -74,12 +74,24 @@ async function fetchDataset<T>(token: string, datasetId: string, limit = 1000): 
   return res.json() as Promise<T[]>;
 }
 
-// ── FL search targets ─────────────────────────────────────────────────────────
+// ── Search targets — Lee County primary, SW FL secondary ─────────────────────
 
+// Lee County cities always scraped. SW FL secondary gives broader inventory.
 const FL_CITIES = [
-  "Fort Myers, FL", "Naples, FL", "Port Charlotte, FL", "Sarasota, FL",
-  "Bradenton, FL", "Tampa, FL", "St Petersburg, FL", "Fort Lauderdale, FL",
-  "Miami, FL", "Orlando, FL", "West Palm Beach, FL", "Jacksonville, FL",
+  // Lee County — PRIMARY (always included, every run)
+  "Fort Myers, FL",
+  "Cape Coral, FL",
+  "Lehigh Acres, FL",
+  "Bonita Springs, FL",
+  "Estero, FL",
+  "Fort Myers Beach, FL",
+  // SW Florida secondary
+  "Naples, FL",
+  "Marco Island, FL",
+  "Port Charlotte, FL",
+  "Punta Gorda, FL",
+  "Sarasota, FL",
+  "Bradenton, FL",
 ];
 
 // ── 1. GOOGLE MAPS SCRAPER ────────────────────────────────────────────────────
@@ -88,18 +100,34 @@ const FL_CITIES = [
 const GMAPS_ACTOR = "compass~google-maps-scraper";
 
 const GMAPS_SEARCH_TARGETS: Array<{ query: string; vertical: string; tags: string[] }> = [
-  { query: "barbershop",          vertical: "service_industry", tags: ["barbershop",    "local-service"] },
-  { query: "hair salon",          vertical: "service_industry", tags: ["hair-salon",    "local-service"] },
-  { query: "nail salon",          vertical: "service_industry", tags: ["nail-salon",    "local-service"] },
-  { query: "med spa",             vertical: "service_industry", tags: ["med-spa",       "local-service"] },
-  { query: "HVAC contractor",     vertical: "home_services",    tags: ["hvac",          "home-service"]  },
-  { query: "roofing contractor",  vertical: "home_services",    tags: ["roofing",       "home-service"]  },
-  { query: "plumber",             vertical: "home_services",    tags: ["plumbing",      "home-service"]  },
-  { query: "electrician",         vertical: "home_services",    tags: ["electrical",    "home-service"]  },
-  { query: "landscaping company", vertical: "home_services",    tags: ["landscaping",   "home-service"]  },
-  { query: "pest control",        vertical: "home_services",    tags: ["pest-control",  "home-service"]  },
-  { query: "auto body shop",      vertical: "auto_services",    tags: ["auto-body",     "local-service"] },
-  { query: "insurance agency",    vertical: "insurance",        tags: ["insurance",     "local-service"] },
+  // ── PI-adjacent — highest referral value ─────────────────────────────────
+  { query: "chiropractor",              vertical: "pi_adjacent",     tags: ["chiropractic",  "pi-adjacent",  "local-service"] },
+  { query: "physical therapy",          vertical: "pi_adjacent",     tags: ["physical-therapy", "pi-adjacent", "local-service"] },
+  { query: "pain management clinic",    vertical: "pi_adjacent",     tags: ["pain-management","pi-adjacent",  "local-service"] },
+  { query: "personal injury attorney",  vertical: "legal",           tags: ["law-firm",      "attorney",     "local-service"] },
+  { query: "tow truck company",         vertical: "auto_services",   tags: ["towing",        "auto-service", "local-service"] },
+  { query: "auto body shop",            vertical: "auto_services",   tags: ["auto-body",     "auto-service", "local-service"] },
+  { query: "auto glass repair",         vertical: "auto_services",   tags: ["auto-glass",    "auto-service", "local-service"] },
+  // ── Beauty & grooming ─────────────────────────────────────────────────────
+  { query: "barbershop",                vertical: "service_industry",tags: ["barbershop",    "local-service"] },
+  { query: "hair salon",                vertical: "service_industry",tags: ["hair-salon",    "local-service"] },
+  { query: "nail salon",                vertical: "service_industry",tags: ["nail-salon",    "local-service"] },
+  { query: "med spa",                   vertical: "service_industry",tags: ["med-spa",       "local-service"] },
+  { query: "lash studio",               vertical: "service_industry",tags: ["lash-artist",   "local-service"] },
+  { query: "tattoo shop",               vertical: "service_industry",tags: ["tattoo",        "local-service"] },
+  { query: "massage therapy",           vertical: "service_industry",tags: ["massage",       "local-service"] },
+  // ── Home services ─────────────────────────────────────────────────────────
+  { query: "roofing contractor",        vertical: "home_services",   tags: ["roofing",       "home-service"] },
+  { query: "HVAC contractor",           vertical: "home_services",   tags: ["hvac",          "home-service"] },
+  { query: "plumber",                   vertical: "home_services",   tags: ["plumbing",      "home-service"] },
+  { query: "electrician",               vertical: "home_services",   tags: ["electrical",    "home-service"] },
+  { query: "landscaping company",       vertical: "home_services",   tags: ["landscaping",   "home-service"] },
+  { query: "pest control",              vertical: "home_services",   tags: ["pest-control",  "home-service"] },
+  { query: "pool service",              vertical: "home_services",   tags: ["pool",          "home-service"] },
+  { query: "pressure washing",          vertical: "home_services",   tags: ["pressure-wash", "home-service"] },
+  // ── Insurance & finance ───────────────────────────────────────────────────
+  { query: "insurance agency",          vertical: "insurance",       tags: ["insurance",     "local-service"] },
+  { query: "real estate agent",         vertical: "real_estate",     tags: ["real-estate",   "local-service"] },
 ];
 
 interface GMapsResult {
@@ -120,7 +148,10 @@ interface GMapsResult {
 }
 
 async function runGoogleMapsScraper(token: string): Promise<void> {
-  const accounts = await db.select({ id: subAccounts.id }).from(subAccounts);
+  // Only send to enrichment-allowed accounts (account 3 = APEX MARKETING).
+  // Never blast all sub-accounts — client accounts do not own these leads.
+  const allAccounts = await db.select({ id: subAccounts.id }).from(subAccounts);
+  const accounts = allAccounts.filter(a => ENRICHMENT_ACCOUNT_IDS.has(a.id));
   if (!accounts.length) return;
 
   let totalUpserted = 0;
@@ -228,7 +259,8 @@ interface ZillowResult {
 }
 
 async function runZillowScraper(token: string): Promise<void> {
-  const accounts = await db.select({ id: subAccounts.id }).from(subAccounts);
+  const _allAccts = await db.select({ id: subAccounts.id }).from(subAccounts);
+  const accounts = _allAccts.filter(a => ENRICHMENT_ACCOUNT_IDS.has(a.id));
   if (!accounts.length) return;
 
   let totalUpserted = 0;
@@ -339,7 +371,8 @@ interface YPagesResult {
 }
 
 async function runYellowPagesScraper(token: string): Promise<void> {
-  const accounts = await db.select({ id: subAccounts.id }).from(subAccounts);
+  const _allAccts = await db.select({ id: subAccounts.id }).from(subAccounts);
+  const accounts = _allAccts.filter(a => ENRICHMENT_ACCOUNT_IDS.has(a.id));
   if (!accounts.length) return;
 
   let totalUpserted = 0;
@@ -431,7 +464,8 @@ interface ApolloResult {
 }
 
 async function runApolloScraper(token: string): Promise<void> {
-  const accounts = await db.select({ id: subAccounts.id }).from(subAccounts);
+  const _allAccts = await db.select({ id: subAccounts.id }).from(subAccounts);
+  const accounts = _allAccts.filter(a => ENRICHMENT_ACCOUNT_IDS.has(a.id));
   if (!accounts.length) return;
 
   let totalUpserted = 0;
@@ -499,16 +533,33 @@ async function runApolloScraper(token: string): Promise<void> {
 const GSEARCH_ACTOR = "apify~google-search-scraper";
 
 const GSEARCH_QUERIES: Array<{ query: string; vertical: string; tags: string[] }> = [
-  { query: "workers compensation attorney Florida",      vertical: "legal",          tags: ["workers-comp", "attorney", "google-search"] },
-  { query: "personal injury lawyer Tampa Fort Myers",    vertical: "legal",          tags: ["personal-injury", "attorney", "google-search"] },
-  { query: "commercial insurance broker Florida",        vertical: "insurance",      tags: ["commercial-insurance", "broker", "google-search"] },
-  { query: "roofing company Fort Myers Florida",         vertical: "home_services",  tags: ["roofing", "google-search"] },
-  { query: "HVAC company Tampa Florida",                 vertical: "home_services",  tags: ["hvac", "google-search"] },
-  { query: "barbershop Fort Myers Naples Florida",       vertical: "service_industry", tags: ["barbershop", "google-search"] },
-  { query: "hair salon Sarasota Bradenton Florida",      vertical: "service_industry", tags: ["hair-salon", "google-search"] },
-  { query: "med spa Orlando Miami Florida",              vertical: "service_industry", tags: ["med-spa", "google-search"] },
-  { query: "auto body shop Jacksonville Miami Florida",  vertical: "auto_services",  tags: ["auto-body", "google-search"] },
-  { query: "plumbing company Southwest Florida",        vertical: "home_services",  tags: ["plumbing", "google-search"] },
+  // PI-adjacent — highest value
+  { query: "chiropractor Fort Myers Cape Coral Florida",          vertical: "local_service",    tags: ["chiropractic", "google-search"] },
+  { query: "personal injury attorney Lee County Florida",         vertical: "legal",            tags: ["personal-injury", "attorney", "google-search"] },
+  { query: "physical therapy clinic Fort Myers Florida",          vertical: "local_service",    tags: ["physical-therapy", "google-search"] },
+  { query: "pain management clinic Cape Coral Fort Myers",        vertical: "local_service",    tags: ["pain-management", "google-search"] },
+  { query: "tow truck company Fort Myers Lehigh Acres Florida",   vertical: "auto_services",    tags: ["towing", "google-search"] },
+  { query: "auto body shop Fort Myers Cape Coral Florida",        vertical: "auto_services",    tags: ["auto-body", "google-search"] },
+  { query: "auto glass repair Lee County Florida",                vertical: "auto_services",    tags: ["auto-glass", "google-search"] },
+  { query: "workers compensation attorney Fort Myers Florida",    vertical: "legal",            tags: ["workers-comp", "attorney", "google-search"] },
+  // Beauty & wellness
+  { query: "barbershop Cape Coral Fort Myers Florida",            vertical: "service_industry", tags: ["barbershop", "google-search"] },
+  { query: "hair salon Fort Myers Bonita Springs Florida",        vertical: "service_industry", tags: ["hair-salon", "google-search"] },
+  { query: "nail salon Cape Coral Lehigh Acres Florida",          vertical: "service_industry", tags: ["nail-salon", "google-search"] },
+  { query: "med spa Fort Myers Estero Florida",                   vertical: "service_industry", tags: ["med-spa", "google-search"] },
+  { query: "lash studio Fort Myers Cape Coral Florida",           vertical: "service_industry", tags: ["lash-studio", "google-search"] },
+  { query: "massage therapy Fort Myers Florida",                  vertical: "service_industry", tags: ["massage", "google-search"] },
+  // Home services
+  { query: "roofing company Fort Myers Cape Coral Florida",       vertical: "home_services",    tags: ["roofing", "google-search"] },
+  { query: "HVAC company Fort Myers Bonita Springs Florida",      vertical: "home_services",    tags: ["hvac", "google-search"] },
+  { query: "plumbing company Cape Coral Fort Myers Florida",      vertical: "home_services",    tags: ["plumbing", "google-search"] },
+  { query: "electrician Fort Myers Lehigh Acres Florida",         vertical: "home_services",    tags: ["electrical", "google-search"] },
+  { query: "landscaping company Lee County Florida",              vertical: "home_services",    tags: ["landscaping", "google-search"] },
+  { query: "pest control Fort Myers Cape Coral Florida",          vertical: "home_services",    tags: ["pest-control", "google-search"] },
+  { query: "pressure washing Fort Myers Florida",                 vertical: "home_services",    tags: ["pressure-washing", "google-search"] },
+  // Insurance & real estate
+  { query: "insurance agency Fort Myers Cape Coral Florida",      vertical: "insurance",        tags: ["insurance-agency", "google-search"] },
+  { query: "real estate agent Fort Myers Bonita Springs Florida", vertical: "real_estate",      tags: ["real-estate", "google-search"] },
 ];
 
 interface GSearchResult {
@@ -521,7 +572,8 @@ interface GSearchResult {
 }
 
 async function runGoogleSearchScraper(token: string): Promise<void> {
-  const accounts = await db.select({ id: subAccounts.id }).from(subAccounts);
+  const _allAccts = await db.select({ id: subAccounts.id }).from(subAccounts);
+  const accounts = _allAccts.filter(a => ENRICHMENT_ACCOUNT_IDS.has(a.id));
   if (!accounts.length) return;
 
   let totalUpserted = 0;

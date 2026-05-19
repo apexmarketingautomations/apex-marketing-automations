@@ -20,51 +20,32 @@ import { hasFeature } from "@shared/schema";
 
 const navSections = [
   {
-    label: "APEX AI",
-    items: [
-      { href: "/apex-intelligence", icon: Brain, label: "Apex Intelligence", adminOnly: true },
-      { href: "/god-mode", icon: Rocket, label: "God Mode", adminOnly: true },
-      { href: "/bot-trainer", icon: Bot, label: "AI Trainer", requiredFeature: "ai_bots" },
-      { href: "/voice-agent", icon: Phone, label: "Voice Agent", requiredFeature: "voice_agents" },
-    ],
-  },
-  {
-    label: "GROW",
+    label: "DASHBOARD",
     items: [
       { href: "/", icon: TrendingUp, label: "Dashboard" },
       { href: "/analytics", icon: BarChart3, label: "Analytics" },
-      { href: "/pipeline", icon: Kanban, label: "Pipeline & CRM" },
-      { href: "/growth", icon: TrendingUp, label: "Growth Center" },
-      { href: "/ad-launcher", icon: Megaphone, label: "Ad Launcher" },
-      { href: "/reputation", icon: Star, label: "Reputation" },
+      { href: "/pipeline", icon: Kanban, label: "CRM" },
       { href: "/reports", icon: FileBarChart, label: "Reports" },
-      { href: "/ab-testing", icon: FlaskConical, label: "A/B Testing" },
-      { href: "/location-search", icon: MapPin, label: "Location Search" },
     ],
   },
   {
-    label: "LEADS",
+    label: "LEAD ENGINES",
     items: [
       { href: "/accident-leads", icon: Car, label: "Crash Leads" },
-      { href: "/sentinel?tab=home", icon: Home, label: "Home & Property", requiredFeature: "sentinel" },
       { href: "/sentinel?tab=legal", icon: Scale, label: "Legal Intel", requiredFeature: "sentinel" },
+      { href: "/sentinel?tab=home", icon: Home, label: "Home & Property", requiredFeature: "sentinel" },
       { href: "/sentinel?tab=distribution", icon: GitFork, label: "Lead Routing", requiredFeature: "sentinel" },
-    ],
-  },
-  {
-    label: "INSURANCE",
-    items: [
       { href: "/insurance", icon: Umbrella, label: "Insurance Hub" },
-      { href: "/insurance/funnel", icon: GitFork, label: "Insurance Funnel" },
     ],
   },
   {
-    label: "SERVICE LEADS",
+    label: "BUILDERS",
     items: [
-      { href: "/home-services", icon: Wrench, label: "Home Services" },
-      { href: "/medspa", icon: Sparkles, label: "Med Spa" },
-      { href: "/pet-services", icon: PawPrint, label: "Pet Services" },
-      { href: "/niches", icon: Scissors, label: "All Niches" },
+      { href: "/dynamic-pages", icon: Layers, label: "Page Builder" },
+      { href: "/site-builder", icon: LayoutTemplate, label: "Site Builder" },
+      { href: "/form-builder", icon: LayoutTemplate, label: "Form Builder" },
+      { href: "/digital-card-builder", icon: ContactRound, label: "Digital Card", requiredFeature: "digital_card" },
+      { href: "/domains", icon: Link2, label: "Domains" },
     ],
   },
   {
@@ -75,29 +56,16 @@ const navSections = [
       { href: "/calendar", icon: CalendarDays, label: "Calendar" },
       { href: "/email-campaigns", icon: Mail, label: "Email Campaigns", requiredFeature: "email_campaigns" },
       { href: "/content-planner", icon: PenTool, label: "Content Planner" },
-      { href: "/whatsapp-templates", icon: MessageSquare, label: "WhatsApp Templates" },
+      { href: "/ad-launcher", icon: Megaphone, label: "Ad Launcher" },
     ],
   },
   {
-    label: "META",
+    label: "ANALYTICS",
     items: [
-      { href: "/meta-messaging", icon: MessageSquare, label: "Messaging" },
-      { href: "/meta-ads", icon: Target, label: "Ad Campaigns" },
-      { href: "/meta-leads", icon: Users, label: "Lead Forms" },
-      { href: "/meta-ops", icon: Activity, label: "Ops Center" },
-    ],
-  },
-  {
-    label: "BUILD",
-    items: [
-      { href: "/site-builder", icon: LayoutTemplate, label: "Site Builder" },
-      { href: "/dynamic-pages", icon: Layers, label: "Dynamic Pages" },
-      { href: "/form-builder", icon: LayoutTemplate, label: "Form Builder" },
-      { href: "/digital-card-builder", icon: ContactRound, label: "Digital Card", requiredFeature: "digital_card" },
-      { href: "/domains", icon: Link2, label: "Domains" },
-      { href: "/website-integration", icon: Globe, label: "Website Integration" },
-      { href: "/roomos", icon: Zap, label: "roomOS" },
-      { href: "/dashboard/layla-studio", icon: Sparkles, label: "Content Studio", accountIdOnly: 21 },
+      { href: "/growth", icon: TrendingUp, label: "Growth Center" },
+      { href: "/reputation", icon: Star, label: "Reputation" },
+      { href: "/ab-testing", icon: FlaskConical, label: "A/B Testing" },
+      { href: "/location-search", icon: MapPin, label: "Location Search" },
     ],
   },
   {
@@ -107,24 +75,21 @@ const navSections = [
       { href: "/integrations", icon: Plug, label: "Integrations" },
       { href: "/billing", icon: DollarSign, label: "Apex Wallet" },
       { href: "/pricing", icon: CreditCard, label: "Plans & Pricing" },
-      { href: "/marketplace", icon: Store, label: "Marketplace" },
-      { href: "/affiliate", icon: Users, label: "Affiliates" },
-      { href: "/white-label", icon: Palette, label: "White Label", requiredFeature: "white_label" },
       { href: "/notification-preferences", icon: BellRing, label: "Notifications" },
-      { href: "/onboarding", icon: Briefcase, label: "New Account" },
     ],
   },
   {
     label: "ADMIN",
     items: [
+      { href: "/apex-intelligence", icon: Brain, label: "Apex Intelligence", adminOnly: true },
+      { href: "/god-mode", icon: Rocket, label: "God Mode", adminOnly: true },
       { href: "/admin-console", icon: Shield, label: "Admin Console", adminOnly: true },
-
       { href: "/snapshots", icon: History, label: "Snapshots", adminOnly: true },
-      { href: "/webhooks", icon: Webhook, label: "Webhooks", requiredFeature: "webhooks" },
       { href: "/execution-timeline", icon: Activity, label: "Activity Log", adminOnly: true },
       { href: "/revenue-command", icon: TrendingUp, label: "Revenue", adminOnly: true },
-      { href: "/sponsorship-manager", icon: Megaphone, label: "Sponsorships", adminOnly: true },
-      { href: "/launch-readiness", icon: Activity, label: "Launch Readiness", adminOnly: true },
+      { href: "/webhooks", icon: Webhook, label: "Webhooks", requiredFeature: "webhooks" },
+      { href: "/bot-trainer", icon: Bot, label: "AI Trainer", requiredFeature: "ai_bots" },
+      { href: "/voice-agent", icon: Phone, label: "Voice Agent", requiredFeature: "voice_agents" },
     ],
   },
 ];

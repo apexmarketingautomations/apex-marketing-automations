@@ -43,9 +43,8 @@ import { resolveBatchDataKey } from "./vendorConfig";
 const PIPELINE_ID      = crypto.randomUUID().slice(0, 8);
 const POLL_INTERVAL_MS = 15 * 60 * 1000;
 
-// All accounts that should receive leads (fetched dynamically at runtime)
-// Not hardcoded to just Giovanni anymore
-const APEX_PARENT_ACCOUNT_ID = Number(process.env.APEX_PARENT_ACCOUNT_ID || 13);
+// Primary account that owns all leads (account 3 = APEX MARKETING)
+const APEX_PARENT_ACCOUNT_ID = Number(process.env.APEX_PARENT_ACCOUNT_ID || 3);
 
 // Google Places API — searches for local businesses with real phone numbers
 const GOOGLE_PLACES_KEY = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_MAPS_API || process.env.GOOGLE_PLACES_API_KEY || process.env.GOOGLE_API_KEY;
@@ -69,24 +68,38 @@ const FL_COUNTIES = [
   { name: "DUVAL",        fips: "12031", city: "Jacksonville" },
 ];
 
-// Local business types to discover via Google Places
+// Local business types to discover via Google Places — Lee County focus
+// Categories ordered by conversion value: PI-adjacent first, then services
 const LOCAL_BUSINESS_SEARCHES = [
-  { query: "barbershop",       vertical: "local_service", category: "barbershop" },
-  { query: "hair salon",       vertical: "local_service", category: "hair_salon" },
-  { query: "nail salon",       vertical: "local_service", category: "nail_salon" },
-  { query: "med spa",          vertical: "local_service", category: "med_spa" },
-  { query: "tattoo shop",      vertical: "local_service", category: "tattoo_shop" },
-  { query: "auto repair shop", vertical: "local_service", category: "auto_repair" },
-  { query: "massage therapy",  vertical: "local_service", category: "massage" },
-  { query: "dental office",    vertical: "local_service", category: "dental" },
-  { query: "law firm",         vertical: "local_service", category: "law_firm" },
-  { query: "roofing company",  vertical: "home_service",  category: "roofing" },
-  { query: "plumber",          vertical: "home_service",  category: "plumbing" },
-  { query: "electrician",      vertical: "home_service",  category: "electrical" },
-  { query: "HVAC company",     vertical: "home_service",  category: "hvac" },
-  { query: "pest control",     vertical: "home_service",  category: "pest_control" },
-  { query: "pool service",     vertical: "home_service",  category: "pool" },
-  { query: "landscaping",      vertical: "home_service",  category: "landscaping" },
+  // ── Personal injury adjacent (highest value) ──────────────────────────────
+  { query: "chiropractor",               vertical: "local_service", category: "chiropractic" },
+  { query: "physical therapy clinic",    vertical: "local_service", category: "physical_therapy" },
+  { query: "pain management clinic",     vertical: "local_service", category: "pain_management" },
+  { query: "personal injury attorney",   vertical: "local_service", category: "law_firm" },
+  { query: "accident attorney",          vertical: "local_service", category: "law_firm" },
+  { query: "tow truck company",          vertical: "local_service", category: "towing" },
+  { query: "auto body shop",             vertical: "local_service", category: "auto_body" },
+  { query: "auto glass repair",          vertical: "local_service", category: "auto_glass" },
+  // ── Beauty & grooming ─────────────────────────────────────────────────────
+  { query: "barbershop",                 vertical: "local_service", category: "barbershop" },
+  { query: "hair salon",                 vertical: "local_service", category: "hair_salon" },
+  { query: "nail salon",                 vertical: "local_service", category: "nail_salon" },
+  { query: "med spa",                    vertical: "local_service", category: "med_spa" },
+  { query: "lash studio",               vertical: "local_service", category: "lash_artist" },
+  { query: "tattoo shop",               vertical: "local_service", category: "tattoo_shop" },
+  { query: "massage therapy",           vertical: "local_service", category: "massage" },
+  // ── Home services ─────────────────────────────────────────────────────────
+  { query: "roofing contractor",        vertical: "home_service",  category: "roofing" },
+  { query: "HVAC contractor",           vertical: "home_service",  category: "hvac" },
+  { query: "plumber",                   vertical: "home_service",  category: "plumbing" },
+  { query: "electrician",               vertical: "home_service",  category: "electrical" },
+  { query: "pest control",              vertical: "home_service",  category: "pest_control" },
+  { query: "pool service",              vertical: "home_service",  category: "pool" },
+  { query: "landscaping company",       vertical: "home_service",  category: "landscaping" },
+  { query: "pressure washing",          vertical: "home_service",  category: "pressure_washing" },
+  // ── Insurance & finance ───────────────────────────────────────────────────
+  { query: "insurance agency",          vertical: "local_service", category: "insurance" },
+  { query: "real estate agent",         vertical: "local_service", category: "real_estate" },
 ];
 
 export type LegalVertical =
@@ -384,21 +397,38 @@ async function fetchGooglePlacesBusinesses(): Promise<RawLegalSignal[]> {
 
   const signals: RawLegalSignal[] = [];
 
-  const targetCities = [
-    { city: "Cape Coral, FL",     county: "LEE" },
-    { city: "Fort Myers, FL",     county: "LEE" },
-    { city: "Naples, FL",         county: "COLLIER" },
-    { city: "Port Charlotte, FL", county: "CHARLOTTE" },
-    { city: "Sarasota, FL",       county: "SARASOTA" },
+  // Lee County primary — every cycle hits all 6 Lee County cities.
+  // Collier / Charlotte / Sarasota are secondary — hit on alternating cycles.
+  const LEE_COUNTY_CITIES = [
+    { city: "Fort Myers, FL",      county: "LEE" },
+    { city: "Cape Coral, FL",      county: "LEE" },
+    { city: "Lehigh Acres, FL",    county: "LEE" },
+    { city: "Bonita Springs, FL",  county: "LEE" },
+    { city: "Estero, FL",          county: "LEE" },
+    { city: "Fort Myers Beach, FL",county: "LEE" },
+  ];
+  const SECONDARY_CITIES = [
+    { city: "Naples, FL",          county: "COLLIER" },
+    { city: "Marco Island, FL",    county: "COLLIER" },
+    { city: "Port Charlotte, FL",  county: "CHARLOTTE" },
+    { city: "Punta Gorda, FL",     county: "CHARLOTTE" },
+    { city: "Sarasota, FL",        county: "SARASOTA" },
+  ];
+  // Even cycles: Lee only. Odd cycles: Lee + secondary.
+  const cycleIndex = Math.floor(Date.now() / (30 * 60 * 1000));
+  const targetCities = cycleIndex % 2 === 0
+    ? LEE_COUNTY_CITIES
+    : [...LEE_COUNTY_CITIES, ...SECONDARY_CITIES.slice(0, 2)];
+
+  // Rotate through all search categories — 4 per cycle so full coverage in ~6hrs
+  const batchStart = cycleIndex % LOCAL_BUSINESS_SEARCHES.length;
+  const searchBatch = [
+    ...LOCAL_BUSINESS_SEARCHES.slice(batchStart, batchStart + 4),
+    ...LOCAL_BUSINESS_SEARCHES.slice(0, Math.max(0, batchStart + 4 - LOCAL_BUSINESS_SEARCHES.length)),
   ];
 
-  const searchBatch = LOCAL_BUSINESS_SEARCHES.slice(
-    Math.floor(Date.now() / (30 * 60 * 1000)) % LOCAL_BUSINESS_SEARCHES.length,
-    Math.floor(Date.now() / (30 * 60 * 1000)) % LOCAL_BUSINESS_SEARCHES.length + 3,
-  );
-
   for (const search of searchBatch) {
-    for (const { city, county } of targetCities.slice(0, 3)) {
+    for (const { city, county } of targetCities) {
       const textQuery = `${search.query} in ${city}`;
       const places = await placesNewApiSearch(textQuery, `[${search.category}/${city}]`);
 
@@ -747,8 +777,10 @@ async function deliverLeadToAllAccounts(lead: any): Promise<void> {
         [acct.id]
       );
       const niche = r.rows[0]?.niche;
-      // Include if legal niche, no sentinel config (generic account), or Apex main
-      if (!niche || niche === "legal" || niche === "attorney" || acct.id === 3 || acct.id === 4) {
+      // Deliver to accounts with legal/attorney niche OR Apex main account (3).
+      // Never deliver to client accounts (Giovanni/account 4) — those receive
+      // leads only when they are explicitly opted-in via a future routing rule.
+      if (acct.id === APEX_PARENT_ACCOUNT_ID || niche === "legal" || niche === "attorney") {
         legalAccountIds.push(acct.id);
       }
     }

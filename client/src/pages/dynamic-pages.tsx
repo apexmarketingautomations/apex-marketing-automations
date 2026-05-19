@@ -22,6 +22,7 @@ import type { DynamicPageSchema } from "@/lib/dynamic-pages/schema";
 import { useAuth } from "@/hooks/use-auth";
 import { useActiveSubAccountId } from "@/components/account-required";
 import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   Sparkles, Globe, Layers, Zap, Eye, Download, Share2,
   Search, X, ImagePlus,
@@ -471,6 +472,7 @@ function TemplateSwatchCard({ template, selected, onSelect }: { template: Templa
 
 export default function DynamicPages() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const isAdmin = user?.isAdmin === "true" || (user as any)?.role === "DEV_ADMIN";
   const subAccountId = useActiveSubAccountId();
 
@@ -563,9 +565,9 @@ export default function DynamicPages() {
           data.schema?.meta?.title || promptIntent.businessName || activeTemplate.name
         );
       }
-    } catch {
-      setGenerated(true);
-      setPhase("build");
+    } catch (err: any) {
+      const msg = err?.message?.replace(/^\d+:\s*/, "") || "Could not generate page. Try again.";
+      toast({ title: "Generation Failed", description: msg, variant: "destructive" });
     } finally {
       setIsGenerating(false);
     }

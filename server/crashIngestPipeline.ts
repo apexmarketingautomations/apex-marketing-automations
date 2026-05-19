@@ -238,7 +238,8 @@ async function createLeadFromCrash(
     // BatchData returns no_match on these 100% of the time and wastes credits.
     // Real skip-trace runs later in enrichCrashLeadContacts() using the
     // driver's HOME address from the FLHSMV official report.
-    const looksLikeHighway = /\b(I-\d|US-\d|SR-\d|CR-\d|FL-\d|MM\s*\d|INTERSTATE|HIGHWAY|HWY)\b/i.test(incident.location || "");
+    // Use \d+ so multi-digit FL highways (I-75, SR-82, US-41, MM224) are caught.
+    const looksLikeHighway = /\b(I-\d+|US-\d+|SR-\d+|CR-\d+|FL-\d+|MM\s*\d+|INTERSTATE|HIGHWAY|HWY)\b/i.test(incident.location || "");
     if (batchDataKey && incident.location && !looksLikeHighway) {
       enrichmentAttemptedAt = new Date();
       try {
@@ -249,11 +250,12 @@ async function createLeadFromCrash(
         );
         enrichmentCompletedAt = new Date();
 
-        if (traceResult.ownerName && !isPlaceholderName(traceResult.ownerName)) {
-          const parts = traceResult.ownerName.trim().split(" ");
-          firstName = parts[0] || firstName;
-          lastName = parts.slice(1).join(" ") || lastName;
-        }
+        // NOTE: We intentionally do NOT update firstName/lastName from the BatchData
+        // result at ingest time. At this stage we only have the CAD dispatch address
+        // (a highway crash scene), so any "person found" is someone who lives nearby —
+        // NOT the crash victim. Names are recovered later by the FLHSMV enrichment
+        // worker (crashReportWorker.ts) which reads the official report.
+        // Only phone/email are safe to use here (if BatchData somehow returns them).
         if (traceResult.ownerPhone) phone = traceResult.ownerPhone;
         if (traceResult.ownerEmail) email = traceResult.ownerEmail;
 
