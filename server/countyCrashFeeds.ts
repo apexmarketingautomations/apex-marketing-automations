@@ -41,6 +41,7 @@
 
 import axios from "axios";
 import type { SentinelIncidentRaw } from "./sentinel";
+import { logSystemEvent } from "./systemLogger";
 
 // Hard county allowlist — anything outside SWFL is dropped at intake.
 export const COUNTY_CRASH_SCOPE = ["LEE", "COLLIER", "CHARLOTTE"] as const;
@@ -95,56 +96,185 @@ interface LeeTrafficRecord {
   status: string;
 }
 
+type LeeFeedCache = {
+  etag?: string;
+  lastOkAt?: number;
+  lastRows?: LeeTrafficRecord[];
+  consecutiveFailures: number;
+  circuitOpenUntil?: number;
+  lastFailureReason?: string;
+};
+
+const leeCache: LeeFeedCache = {
+  consecutiveFailures: 0,
+};
+
+function nowMs() {
+  return Date.now();
+}
+
+function isCircuitOpen(cache: LeeFeedCache): boolean {
+  return !!cache.circuitOpenUntil && cache.circuitOpenUntil > nowMs();
+}
+
+function openCircuit(cache: LeeFeedCache, ms: number, reason: string) {
+  cache.circuitOpenUntil = nowMs() + ms;
+  cache.lastFailureReason = reason;
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function shouldRetry(err: any, status?: number): boolean {
+  if (status === 403) return false; // WAF / blocked — retries just hammer
+  if (status === 401) return false;
+  if (status === 400) return false;
+  if (status === 404) return false;
+  if (status === 429) return true;
+  if (status && status >= 500) return true;
+  // network / timeout / socket errors
+  const msg = String(err?.message || "");
+  return /timeout|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up/i.test(msg);
+}
+
+async function fetchLeeTrafficSnapshot(): Promise<{ rows: LeeTrafficRecord[]; etag?: string; notModified?: boolean; status: number }> {
+  const resp = await axios.get<LeeTrafficRecord[]>(LEE_TRAFFIC_API, {
+    timeout: FEED_TIMEOUT_MS,
+    validateStatus: (s) => (s >= 200 && s < 300) || s === 304 || s === 403 || s === 429 || (s >= 500 && s < 600),
+    headers: {
+      Accept: "application/json",
+      ...(leeCache.etag ? { "If-None-Match": leeCache.etag } : {}),
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
+        "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+    },
+  });
+
+  const status = resp.status;
+  if (status === 304) {
+    return { rows: leeCache.lastRows ?? [], etag: leeCache.etag, notModified: true, status };
+  }
+  if (status === 403 || status === 429 || status >= 500) {
+    return { rows: [], status };
+  }
+
+  const rows = Array.isArray(resp.data) ? resp.data : [];
+  const etag = typeof resp.headers?.etag === "string" ? resp.headers.etag : undefined;
+  return { rows, etag, status };
+}
+
 export async function fetchLeeCrashFeed(): Promise<SentinelIncidentRaw[]> {
   try {
-    const resp = await axios.get<LeeTrafficRecord[]>(LEE_TRAFFIC_API, {
-      timeout: FEED_TIMEOUT_MS,
-      headers: {
-        Accept: "application/json",
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
-          "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
-      },
-    });
+    if (isCircuitOpen(leeCache)) {
+      const until = new Date(leeCache.circuitOpenUntil!).toISOString();
+      console.warn(`[COUNTY-CRASH] LEE: circuit open until ${until} (${leeCache.lastFailureReason || "unknown"})`);
+      // Best-effort: return last known snapshot so the ingest doesn't go dark.
+      const cached = leeCache.lastRows ?? [];
+      return cached.length ? mapLeeRowsToIncidents(cached) : [];
+    }
 
-    const rows = Array.isArray(resp.data) ? resp.data : [];
+    let rows: LeeTrafficRecord[] = [];
+    let etag: string | undefined;
+    let status = 0;
+
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const snap = await fetchLeeTrafficSnapshot();
+      status = snap.status;
+
+      if (snap.notModified) {
+        rows = snap.rows;
+        etag = snap.etag;
+        break;
+      }
+
+      // Treat 2xx as success; everything else is handled below.
+      if (status >= 200 && status < 300) {
+        rows = snap.rows;
+        etag = snap.etag;
+        break;
+      }
+
+      const retry = shouldRetry(null, status);
+      if (!retry || attempt === maxAttempts) {
+        throw Object.assign(new Error(`HTTP ${status}`), { status });
+      }
+
+      const backoff = 400 * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 250);
+      await sleep(backoff);
+    }
+
     const incidents: SentinelIncidentRaw[] = [];
 
-    for (const r of rows) {
-      if (!r || !r.id || !isCrashNature(r.nature)) continue;
-
-      const address = (r.address || "").trim();
-      const city = (r.city || "").trim();
-      if (!address) continue;
-
-      // Match the FHP location convention: "<address> [<city>], LEE County, FL"
-      const location = `${address}${city ? ` [${city}]` : ""}, LEE County, FL`;
-      const severity = deriveSeverity(r.nature || "", r.remarks || "");
-
-      incidents.push({
-        id: r.id,
-        type: r.nature || "CRASH",
-        location,
-        lat: null,
-        lng: null,
-        severity,
-        actionRequired: severity === "high",
-        source: "lcso_cad",
-        state: "FL",
-        county: "LEE",
-        remarks: r.remarks || "",
-        received: r.date || "",
-      });
-    }
+    incidents.push(...mapLeeRowsToIncidents(rows));
 
     console.log(
       `[COUNTY-CRASH] LEE: ${rows.length} CAD call(s) → ${incidents.length} crash signal(s)`,
     );
+
+    // Cache for conditional requests + degraded-mode fallback.
+    leeCache.lastRows = rows;
+    if (etag) leeCache.etag = etag;
+    leeCache.lastOkAt = nowMs();
+    leeCache.consecutiveFailures = 0;
+
     return incidents;
   } catch (err: any) {
-    console.warn(`[COUNTY-CRASH] LEE feed failed (non-fatal): ${err.message}`);
-    return [];
+    const status = typeof err?.status === "number" ? err.status : (typeof err?.response?.status === "number" ? err.response.status : undefined);
+    const msg = err?.message ? String(err.message) : String(err);
+    leeCache.consecutiveFailures++;
+
+    // Circuit breaker to avoid hammering if LEE goes down or blocks datacenter.
+    if (status === 403) {
+      openCircuit(leeCache, 30 * 60_000, "HTTP 403");
+    } else if (leeCache.consecutiveFailures >= 3) {
+      openCircuit(leeCache, 10 * 60_000, `failures=${leeCache.consecutiveFailures} last=${status ? `HTTP ${status}` : msg}`);
+    }
+
+    console.warn(`[COUNTY-CRASH] LEE feed failed (non-fatal): ${status ? `HTTP ${status}` : msg}`);
+    logSystemEvent("warn", "county-crash", "LEE traffic feed failed", {
+      status: status ?? null,
+      consecutiveFailures: leeCache.consecutiveFailures,
+      circuitOpenUntil: leeCache.circuitOpenUntil ? new Date(leeCache.circuitOpenUntil).toISOString() : null,
+      message: msg.slice(0, 200),
+    }).catch(() => {});
+
+    // Prefer last known snapshot over an empty feed.
+    const cached = leeCache.lastRows ?? [];
+    return cached.length ? mapLeeRowsToIncidents(cached) : [];
   }
+}
+
+function mapLeeRowsToIncidents(rows: LeeTrafficRecord[]): SentinelIncidentRaw[] {
+  const incidents: SentinelIncidentRaw[] = [];
+  for (const r of rows) {
+    if (!r || !r.id || !isCrashNature(r.nature)) continue;
+
+    const address = (r.address || "").trim();
+    const city = (r.city || "").trim();
+    if (!address) continue;
+
+    // Match the FHP location convention: "<address> [<city>], LEE County, FL"
+    const location = `${address}${city ? ` [${city}]` : ""}, LEE County, FL`;
+    const severity = deriveSeverity(r.nature || "", r.remarks || "");
+
+    incidents.push({
+      id: r.id,
+      type: r.nature || "CRASH",
+      location,
+      lat: null,
+      lng: null,
+      severity,
+      actionRequired: severity === "high",
+      source: "lcso_cad",
+      state: "FL",
+      county: "LEE",
+      remarks: r.remarks || "",
+      received: r.date || "",
+    });
+  }
+  return incidents;
 }
 
 // ── COLLIER COUNTY ────────────────────────────────────────────────────────────
