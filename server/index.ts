@@ -1873,6 +1873,9 @@ RULES:
   const { registerEnterpriseAdminRoutes } = await import("./routes/enterpriseAdmin");
   registerEnterpriseAdminRoutes(app);
 
+  const { registerFrontDeskRoutes } = await import("./routes/frontDesk");
+  registerFrontDeskRoutes(app);
+
   await setupAuth(app);
 
   // Admin-secret bypass: when an internal/trusted caller (e.g. the Apex

@@ -84,6 +84,7 @@ const WhatsAppTemplatesPage = lazy(() => import("@/pages/whatsapp-templates"));
 const ContentPlannerPage = lazy(() => import("@/pages/content-planner"));
 const RoomOSPage = lazy(() => import("@/pages/roomos"));
 const RoomOSDashboardPage = lazy(() => import("@/pages/roomos-dashboard"));
+const FrontDeskKioskPage = lazy(() => import("@/pages/frontdesk-kiosk"));
 const IntelligenceDashboardPage = lazy(() => import("@/pages/intelligence-dashboard"));
 const CardIntelligencePage = lazy(() => import("@/pages/card-intelligence"));
 const ApexIntelligencePage = lazy(() => import("@/pages/apex-intelligence"));
@@ -308,6 +309,17 @@ function Router() {
           <Suspense fallback={<PageLoader />}>
             <RoomOSDashboardPage />
           </Suspense>
+        </Route>
+
+        {/* iPad front desk kiosk (requires login, but no sidebar layout) */}
+        <Route path="/kiosk/frontdesk">
+          {!isAuthenticated ? (
+            <Redirect to="/" />
+          ) : (
+            <Suspense fallback={<PageLoader />}>
+              <FrontDeskKioskPage />
+            </Suspense>
+          )}
         </Route>
 
         {/* Landing page for unauthenticated, dashboard for authenticated */}
