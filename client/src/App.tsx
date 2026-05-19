@@ -311,6 +311,13 @@ function Router() {
           </Suspense>
         </Route>
 
+        {/* Standalone public front desk kiosk — no auth required */}
+        <Route path="/frontdesk">
+          <Suspense fallback={<PageLoader />}>
+            <FrontDeskKioskPage />
+          </Suspense>
+        </Route>
+
         {/* iPad front desk kiosk (requires login, but no sidebar layout) */}
         <Route path="/kiosk/frontdesk">
           {!isAuthenticated ? (
