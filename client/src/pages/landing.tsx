@@ -1,827 +1,622 @@
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { useEffect, useMemo, useRef } from "react";
 import { Link } from "wouter";
-import { SalesChatbot } from "@/components/sales-chatbot";
-import { HomeHero3D } from "@/components/landing/HomeHero3D";
-import {
-  MessageSquare, GitFork, Bot, LayoutTemplate, Megaphone, Phone, Star,
-  DollarSign, Link2, Rocket, TrendingUp, Palette, Sparkles, ArrowRight,
-  Zap, Users, CircleDollarSign, Shield, CheckCircle2, ChevronDown, ChevronUp,
-  BarChart3, Globe, Instagram, Target, Mail, Kanban, CalendarDays, Webhook,
-  FileBarChart, Building2, Satellite, Brain, MapPin, FormInput, Layers,
-  GitBranch, Workflow, Eye, Activity, Lock, Send, MessageCircle, FileText,
-  Heart, Briefcase, Home, Stethoscope, Scale, Dumbbell, Camera, Car,
-  Utensils, Scissors, GraduationCap, Wrench, ShoppingBag
-} from "lucide-react";
+import "./landing.css";
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 40 },
-  visible: (i: number) => ({
-    opacity: 1, y: 0,
-    transition: { delay: i * 0.06, duration: 0.5 },
-  }),
-};
-
-const toolGroups = [
-  {
-    category: "Apex Intelligence",
-    tagline: "An autonomous AI operator that runs the entire platform for you.",
-    tools: [
-      { icon: Brain, title: "Apex Intelligence", desc: "Autonomous AI operator — gives commands across the entire platform. Create contacts, launch campaigns, send messages, train bots. Just ask.", color: "violet" },
-      { icon: Eye, title: "Real-Time Action Feed", desc: "Watch every action your AI takes in real time. Full audit trail across CRM, messaging, ads, and workflows.", color: "cyan" },
-      { icon: Activity, title: "System Health Monitor", desc: "Live integrity scoring, fake-completion detection, and automatic learning from every outcome.", color: "emerald" },
-      { icon: Bot, title: "Custom AI Bots", desc: "Train chatbots on any website with multi-page crawling. Deploy across SMS, IG, WhatsApp, FB, Telegram, and your site.", color: "green" },
-    ],
-  },
-  {
-    category: "Unified Communications",
-    tagline: "Every conversation, every channel, in one inbox.",
-    tools: [
-      { icon: MessageSquare, title: "Unified Inbox", desc: "SMS, Instagram, WhatsApp, Facebook Messenger, Telegram & email — all in one AI-scored thread view.", color: "cyan" },
-      { icon: Phone, title: "AI Voice Agent", desc: "24/7 AI receptionists with custom personas. Books appointments, answers questions, qualifies leads.", color: "blue" },
-      { icon: Instagram, title: "Instagram DM Manager", desc: "Real-time IG conversations, comment-to-DM bots, story replies, automated qualification.", color: "fuchsia" },
-      { icon: MessageCircle, title: "Meta Messaging Suite", desc: "Next-gen WhatsApp, Messenger & Instagram with template approvals, broadcast lists, and automation.", color: "sky" },
-      { icon: Mail, title: "Email Campaigns", desc: "Drag-and-drop builder, templates, scheduling, segmentation, open/click tracking & A/B testing.", color: "rose" },
-      { icon: Send, title: "SMS & MMS Marketing", desc: "Twilio-powered bulk messaging with opt-out compliance, link tracking, and AI-generated copy.", color: "pink" },
-    ],
-  },
-  {
-    category: "Marketing & Growth",
-    tagline: "AI-powered ads, content, and lead generation.",
-    tools: [
-      { icon: Target, title: "Meta Ad Manager", desc: "Facebook & Instagram campaigns with AI copy, creative generation, audience targeting, and live analytics.", color: "sky" },
-      { icon: Megaphone, title: "AI Ad Studio", desc: "Generate ads, headlines, and creative from one prompt. Powered by GPT-4o and Gemini.", color: "pink" },
-      { icon: Satellite, title: "Apex Sentinel", desc: "Real-time incident scanning for personal injury, accident, and high-intent lead generation.", color: "amber" },
-      { icon: MapPin, title: "Geofencing", desc: "Trigger ads, SMS, and workflows when prospects enter target locations. Hyper-local targeting.", color: "orange" },
-      { icon: GitBranch, title: "A/B Testing", desc: "Split-test landing pages, ads, subject lines, and bot personas. Auto-promote winners.", color: "indigo" },
-      { icon: FileText, title: "Content Planner", desc: "Generate, schedule, and publish posts across Instagram, Facebook, and LinkedIn from one calendar.", color: "rose" },
-    ],
-  },
-  {
-    category: "CRM, Pipeline & Booking",
-    tagline: "Manage every lead, deal, and appointment in one place.",
-    tools: [
-      { icon: Kanban, title: "Visual CRM Pipeline", desc: "Drag-and-drop deal stages, conversion tracking, automated stage triggers, and revenue forecasting.", color: "indigo" },
-      { icon: Users, title: "Contact Database", desc: "Tags, segments, geocoded addresses, opt-out tracking, custom fields, and bulk import.", color: "cyan" },
-      { icon: CalendarDays, title: "Calendar & Booking", desc: "Appointment scheduling with optional Google Calendar two-way sync.", color: "emerald" },
-      { icon: FormInput, title: "Form Builder", desc: "Drag-and-drop lead capture forms with conditional logic, hidden fields, and webhook triggers.", color: "lime" },
-      { icon: Star, title: "Reputation Manager", desc: "Smart review routing — happy clients to Google, unhappy ones to private feedback for recovery.", color: "yellow" },
-    ],
-  },
-  {
-    category: "Workflows & Automation",
-    tagline: "Visual builders that run your business while you sleep.",
-    tools: [
-      { icon: Workflow, title: "Workflow Builder", desc: "Visual automation engine with triggers, delays, conditions, branching, and 50+ action blocks.", color: "purple" },
-      { icon: Rocket, title: "God Mode", desc: "Launch an entire business in 60 seconds — phone number, AI agent, site, workflows, and pipeline.", color: "red" },
-      { icon: Layers, title: "Funnel Builder", desc: "Multi-step lead funnels with upsells, downsells, and automated follow-up sequences.", color: "violet" },
-      { icon: LayoutTemplate, title: "AI Site Builder", desc: "Generate full landing pages from a single prompt. 22 section types, mobile-optimized, hosted free.", color: "orange" },
-      { icon: GitFork, title: "Snapshot Cloning", desc: "Save entire account setups (workflows, bots, sites, pipelines) as snapshots and deploy in one click.", color: "teal" },
-    ],
-  },
-  {
-    category: "Agency & White-Label",
-    tagline: "Built for operators who run multiple businesses or clients.",
-    tools: [
-      { icon: Building2, title: "Multi-Tenant Sub-Accounts", desc: "Unlimited isolated workspaces — one for each client. Full data separation, role-based access.", color: "indigo" },
-      { icon: Palette, title: "Full White-Label", desc: "Your brand, your domain, your colors, your login page. Clients never see Apex anywhere.", color: "violet" },
-      { icon: Briefcase, title: "Agency Command Center", desc: "Manage every client account from one dashboard. Bulk actions, cross-account analytics, billing.", color: "blue" },
-      { icon: ShoppingBag, title: "Snapshot Marketplace", desc: "Sell your snapshots to other agencies. Earn revenue on templates, workflows, and AI bots.", color: "emerald" },
-      { icon: Heart, title: "Affiliate Program", desc: "Built-in referral tracking, payout dashboard, and tiered commissions. Grow with partners.", color: "rose" },
-    ],
-  },
-  {
-    category: "Platform & Integrations",
-    tagline: "Real-time analytics, full APIs, and rock-solid foundations.",
-    tools: [
-      { icon: BarChart3, title: "Real-Time Analytics", desc: "Live dashboards for messages, AI usage, conversions, revenue, pipeline velocity, and ROI.", color: "lime" },
-      { icon: Webhook, title: "Webhooks & Public API", desc: "Connect to Zapier, Make.com, n8n, or anything custom. Full REST API with API key auth.", color: "slate" },
-      { icon: Globe, title: "Website Integration", desc: "Embed AI chatbots, lead forms, and tracking pixels on any site. WordPress, Shopify, custom — all supported.", color: "teal" },
-      { icon: CircleDollarSign, title: "Stripe Billing & Credits", desc: "Built-in subscription billing, AI credits ledger, usage-based markup on every SMS/call/AI call.", color: "amber" },
-      { icon: Lock, title: "Enterprise Security", desc: "Multi-factor auth, role-based permissions, full audit logs, encrypted secrets, and CSRF protection.", color: "cyan" },
-    ],
-  },
-];
-
-const tools = toolGroups.flatMap(g => g.tools);
-
-const industries = [
-  { icon: Stethoscope, name: "Med Spas & Aesthetic", path: "/medspa" },
-  { icon: Scale, name: "Personal Injury Lawyers", path: "/lawyers" },
-  { icon: Home, name: "Real Estate", path: "/realtors" },
-  { icon: Wrench, name: "Home Services", path: "/home-services" },
-  { icon: Dumbbell, name: "Gyms & Fitness", path: "/gym" },
-  { icon: Heart, name: "Chiropractors", path: "/chiropractors" },
-  { icon: Camera, name: "Photographers", path: "/photography" },
-  { icon: Car, name: "Auto Dealerships", path: "/auto-dealers" },
-  { icon: Briefcase, name: "Coaches & Consultants", path: "/coaches" },
-  { icon: Utensils, name: "Restaurants", path: "/restaurants" },
-  { icon: Stethoscope, name: "Dental Practices", path: "/dentists" },
-  { icon: ShoppingBag, name: "E-Commerce Brands", path: "/ecommerce" },
-  { icon: Shield, name: "Insurance Agencies", path: "/insurance" },
-  { icon: Heart, name: "Pet Services", path: "/pet-services" },
-  { icon: Star, name: "Wedding Vendors", path: "/wedding" },
-  { icon: Megaphone, name: "Marketing Agencies", path: "/marketers" },
-];
-
-const colorMap: Record<string, { bg: string; text: string; border: string }> = {
-  cyan: { bg: "bg-cyan-500/10", text: "text-cyan-400", border: "border-cyan-500/20" },
-  blue: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20" },
-  orange: { bg: "bg-orange-500/10", text: "text-orange-400", border: "border-orange-500/20" },
-  green: { bg: "bg-green-500/10", text: "text-green-400", border: "border-green-500/20" },
-  purple: { bg: "bg-purple-500/10", text: "text-purple-400", border: "border-purple-500/20" },
-  pink: { bg: "bg-pink-500/10", text: "text-pink-400", border: "border-pink-500/20" },
-  red: { bg: "bg-red-500/10", text: "text-red-400", border: "border-red-500/20" },
-  yellow: { bg: "bg-yellow-500/10", text: "text-yellow-400", border: "border-yellow-500/20" },
-  indigo: { bg: "bg-indigo-500/10", text: "text-indigo-400", border: "border-indigo-500/20" },
-  emerald: { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20" },
-  rose: { bg: "bg-rose-500/10", text: "text-rose-400", border: "border-rose-500/20" },
-  fuchsia: { bg: "bg-fuchsia-500/10", text: "text-fuchsia-400", border: "border-fuchsia-500/20" },
-  sky: { bg: "bg-sky-500/10", text: "text-sky-400", border: "border-sky-500/20" },
-  amber: { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20" },
-  teal: { bg: "bg-teal-500/10", text: "text-teal-400", border: "border-teal-500/20" },
-  violet: { bg: "bg-violet-500/10", text: "text-violet-400", border: "border-violet-500/20" },
-  lime: { bg: "bg-lime-500/10", text: "text-lime-400", border: "border-lime-500/20" },
-  slate: { bg: "bg-slate-500/10", text: "text-slate-400", border: "border-slate-500/20" },
-};
-
-const tiers = [
-  {
-    id: "starter",
-    name: "Starter AI",
-    price: 48,
-    originalPrice: 97,
-    description: "Complete automation for the solo entrepreneur.",
-    features: ["1 Sub-Account", "Unified Inbox", "AI Site Builder", "Review Buffer", "3 Active Workflows", "1 AI Chatbot", "$10 AI Credits/mo"],
-    glow: "border-white/10",
-    gradient: "from-gray-500 to-white",
-  },
-  {
-    id: "pro",
-    name: "Pro",
-    price: 148,
-    originalPrice: 297,
-    description: "Build an empire with unlimited sub-accounts.",
-    features: ["Unlimited Sub-Accounts", "Ghost SDR Parallel Dialer", "Snapshot Marketplace", "Snapshot Cloning", "Advanced Theming", "Unlimited Workflows", "$25 AI Credits/mo", "Affiliate Dashboard"],
-    glow: "border-cyan-500/50 shadow-[0_0_30px_rgba(6,182,212,0.15)]",
-    gradient: "from-cyan-500 to-blue-600",
-    popular: true,
-  },
-  {
-    id: "enterprise",
-    name: "Enterprise",
-    price: 248,
-    originalPrice: 497,
-    description: "Total White-Label dominance. Zero limits.",
-    features: ["Full White-Labeling", "Custom Domain", "Marketplace Profit Sharing", "Sentinel Global Rules", "Bulk Rollback Controls", "Agency Command Center", "$50 AI Credits/mo", "Priority Founder Support"],
-    glow: "border-purple-500/50 shadow-[0_0_30px_rgba(168,85,247,0.15)]",
-    gradient: "from-purple-500 to-red-500",
-  },
-];
-
-const faqs = [
-  { q: "Is there a free trial?", a: "Yes. Every plan comes with a 30-day free trial. We collect a payment method on file via Stripe so your account is ready when the trial ends — your card is not charged until day 31, and you can cancel anytime in two clicks from the dashboard." },
-  { q: "What happens after the Blitz pricing ends?", a: "If you sign up during the 30-day Blitz window, your price is locked forever. As long as your subscription stays active, you'll never pay more than your launch price." },
-  { q: "Can I switch plans later?", a: "Absolutely. You can upgrade or downgrade at any time. If you upgrade, you'll get prorated credit for your current billing cycle." },
-  { q: "What is a sub-account?", a: "A sub-account is a separate workspace for a client or business. Each has its own inbox, contacts, workflows, and AI bots. Pro and Enterprise include unlimited sub-accounts." },
-  { q: "Do I need coding skills?", a: "Not at all. Everything is drag-and-drop or AI-generated. From websites to workflows to chatbots — no code required." },
-  { q: "How does usage billing work?", a: "Your plan includes AI credits. SMS, voice minutes, and AI generations are billed at transparent rates with your margin built in. You profit on every interaction your clients make." },
-];
-
-const stats = [
-  { label: "Built-In Tools", value: "35+" },
-  { label: "Industries Supported", value: "16" },
-  { label: "Communication Channels", value: "8" },
-  { label: "Average Tools Replaced", value: "12" },
-];
-
-export default function LandingPage() {
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
-  const [slotsLeft, setSlotsLeft] = useState(12);
-  const [showAllFeatures, setShowAllFeatures] = useState(false);
-
+/* ── hooks ────────────────────────────────────────────────────────────────── */
+function useReveal() {
+  const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const stored = sessionStorage.getItem("apex_slots");
-    if (stored) {
-      setSlotsLeft(parseInt(stored));
-    } else {
-      const randomSlots = Math.floor(Math.random() * 5) + 8;
-      setSlotsLeft(randomSlots);
-      sessionStorage.setItem("apex_slots", String(randomSlots));
-    }
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => entries.forEach((e) => { if (e.isIntersecting) el.classList.add("in"); }),
+      { threshold: 0.15 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+  return ref;
+}
+
+function useTilt(maxDeg = 6) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let raf = 0;
+    const onMove = (e: MouseEvent) => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const r = el.getBoundingClientRect();
+        const dx = (e.clientX - (r.left + r.width / 2)) / (window.innerWidth / 2);
+        const dy = (e.clientY - (r.top + r.height / 2)) / (window.innerHeight / 2);
+        el.style.transform = `perspective(1200px) rotateX(${(-dy * maxDeg).toFixed(2)}deg) rotateY(${(dx * maxDeg).toFixed(2)}deg)`;
+      });
+    };
+    const onLeave = () => { el.style.transform = "perspective(1200px) rotateX(0) rotateY(0)"; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseleave", onLeave);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseleave", onLeave);
+      cancelAnimationFrame(raf);
+    };
+  }, [maxDeg]);
+  return ref;
+}
+
+/* ── atmosphere ───────────────────────────────────────────────────────────── */
+function Atmosphere({ count = 40, rays = 12 }: { count?: number; rays?: number }) {
+  const particles = useMemo(() =>
+    Array.from({ length: count }).map((_, i) => ({
+      size: 2 + Math.random() * 8,
+      left: Math.random() * 100,
+      dur: 8 + Math.random() * 18,
+      delay: Math.random() * -20,
+      drift: (Math.random() - 0.5) * 80,
+      opacity: 0.25 + Math.random() * 0.55,
+      dist: -(120 + Math.random() * 80),
+      k: i,
+    })), [count]);
+
+  const rayList = useMemo(() =>
+    Array.from({ length: rays }).map((_, i) => ({
+      left: (i / rays) * 100 + (Math.random() - 0.5) * 6,
+      delay: (Math.random() * -7).toFixed(2),
+      width: 1 + Math.random() * 2.5,
+      k: i,
+    })), [rays]);
+
+  return (
+    <>
+      <div className="ap-rays" aria-hidden>
+        {rayList.map((r) => (
+          <span key={r.k} style={{ left: r.left + "%", width: r.width + "px", animationDelay: r.delay + "s" }} />
+        ))}
+      </div>
+      <div className="ap-particles" aria-hidden>
+        {particles.map((p) => (
+          <span key={p.k} className="ap-particle" style={{
+            left: p.left + "vw", width: p.size + "px", height: p.size + "px",
+            animationDuration: p.dur + "s", animationDelay: p.delay + "s",
+            ["--drift" as any]: p.drift + "px",
+            ["--o" as any]: p.opacity,
+            ["--dist" as any]: p.dist + "vh",
+          }} />
+        ))}
+      </div>
+      <div className="ap-fog" aria-hidden />
+    </>
+  );
+}
+
+/* ── nav ──────────────────────────────────────────────────────────────────── */
+function Nav() {
+  return (
+    <nav className="ap-nav">
+      <div className="ap-nav-links">
+        {["Services", "Automation", "Results", "About"].map((it) => (
+          <a key={it}>{it}</a>
+        ))}
+      </div>
+      <div className="ap-nav-right">
+        <Link href="/login" className="ap-btn-pill-ghost">Sign In</Link>
+        <Link href="/login" className="ap-btn-pill-primary">Get Started</Link>
+      </div>
+    </nav>
+  );
+}
+
+/* ── logo ─────────────────────────────────────────────────────────────────── */
+function ApexLogo({ size = 96 }: { size?: number }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+      <div className="ap-sonar-wrap" style={{ width: size, height: size }}>
+        <span className="ap-sonar-ring" />
+        <span className="ap-sonar-ring r2" />
+        <span className="ap-sonar-ring r3" />
+        <svg className="ap-sonar-target" width={size} height={size} viewBox="0 0 80 80" aria-label="Apex">
+          <defs>
+            <linearGradient id="ap-grad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="#ffffff" />
+              <stop offset="0.4" stopColor="#a6ecff" />
+              <stop offset="1" stopColor="#00b8d4" />
+            </linearGradient>
+            <linearGradient id="ap-inner" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="rgba(255,255,255,0.9)" />
+              <stop offset="1" stopColor="rgba(0,229,255,0.3)" />
+            </linearGradient>
+          </defs>
+          <path d="M40 4 L74 72 L52 72 L48 60 L32 60 L28 72 L6 72 Z M40 28 L34 50 L46 50 Z"
+            fill="url(#ap-grad)" stroke="rgba(255,255,255,0.6)" strokeWidth="0.5" />
+          <path d="M40 4 L48 26 L40 24 Z" fill="url(#ap-inner)" opacity="0.9" />
+        </svg>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, marginTop: 8 }}>
+        <div style={{ fontFamily: "var(--font-display)", fontWeight: 900, letterSpacing: "0.22em", color: "#e8f4ff", fontSize: Math.round(size * 0.7), lineHeight: 1, textShadow: "0 0 24px rgba(0,229,255,0.5)" }}>APEX</div>
+        <div style={{ fontFamily: "var(--font-heading)", fontWeight: 500, letterSpacing: "0.3em", color: "#7fe5ff", fontSize: Math.max(10, Math.round(size * 0.13)), textTransform: "uppercase", textShadow: "0 0 12px rgba(0,229,255,0.6)" }}>Marketing</div>
+      </div>
+    </div>
+  );
+}
+
+/* ── intel feed ───────────────────────────────────────────────────────────── */
+const IF_DATA = [
+  { type: "lead",   title: "New Lead — Roofing Co.",   loc: "Auto-qualified · High intent", ago: "1m" },
+  { type: "email",  title: "Email Sequence Fired",      loc: "847 contacts · 68% open rate", ago: "3m" },
+  { type: "social", title: "Reel Published",            loc: "Instagram · 2.4K reach",       ago: "6m" },
+] as const;
+
+const IF_ICONS: Record<string, JSX.Element> = {
+  lead:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="4"/><path d="M6 22v-2a6 6 0 0 1 12 0v2"/></svg>,
+  email:  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>,
+  social: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>,
+};
+
+function IntelFeed() {
+  const tilt = useTilt(4);
+  return (
+    <div ref={tilt} className="ap-card">
+      <div className="ap-card-head"><div className="ap-card-title">Feed</div><span className="ap-live-dot">Live</span></div>
+      {IF_DATA.map((row, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderTop: i === 0 ? "none" : "1px solid var(--line-1)" }}>
+          <div style={{ width: 26, height: 26, borderRadius: 5, flexShrink: 0, background: "rgba(0,229,255,0.08)", border: "1px solid rgba(0,229,255,0.25)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-hi)" }}>
+            <span style={{ width: 14, height: 14, display: "block" }}>{IF_ICONS[row.type]}</span>
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: "var(--font-body)", fontSize: 12, color: "var(--fg-1)", fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.title}</div>
+            <div style={{ fontFamily: "var(--font-body)", fontSize: 10, color: "var(--fg-3)" }}>{row.loc}</div>
+          </div>
+          <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--fg-mute)", flexShrink: 0 }}>{row.ago} ago</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── sparkline / leads card ───────────────────────────────────────────────── */
+function Sparkline() {
+  const data = [62,58,71,64,80,68,90,84,96,88,110,102,118];
+  const max = Math.max(...data);
+  const w = 240, h = 60;
+  let d = "";
+  data.forEach((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - (v / max) * (h - 4) - 2;
+    d += (i === 0 ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(1) + " ";
+  });
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: 60, marginTop: 8 }}>
+      <defs>
+        <linearGradient id="ap-sparkfill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#00e5ff" stopOpacity="0.45" />
+          <stop offset="1" stopColor="#00e5ff" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={d + `L${w} ${h} L0 ${h} Z`} fill="url(#ap-sparkfill)" />
+      <path d={d} fill="none" stroke="#00e5ff" strokeWidth="1.5" style={{ filter: "drop-shadow(0 0 6px rgba(0,229,255,0.6))" }} />
+    </svg>
+  );
+}
+
+function IncidentsCard() {
+  const tilt = useTilt(4);
+  return (
+    <div ref={tilt} className="ap-card">
+      <div className="ap-card-title">Leads This Month</div>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 8 }}>
+        <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 32, color: "var(--fg-1)", letterSpacing: "-0.02em" }}>3,847</span>
+        <span style={{ fontFamily: "var(--font-heading)", fontSize: 11, color: "var(--signal-live)" }}>+22.4% vs last month</span>
+      </div>
+      <Sparkline />
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontFamily: "var(--font-mono)", fontSize: 9, color: "var(--fg-mute)" }}>
+        <span>12 AM</span><span>6 AM</span><span>12 PM</span><span>6 PM</span><span>12 AM</span>
+      </div>
+    </div>
+  );
+}
+
+/* ── donut / traffic card ─────────────────────────────────────────────────── */
+const TC_CATS = [
+  { name: "Organic Social", pct: 38, color: "#00e5ff" },
+  { name: "Paid Ads",       pct: 27, color: "#7fe5ff" },
+  { name: "Email",          pct: 21, color: "#4ade80" },
+  { name: "SEO / Organic",  pct: 9,  color: "#fbbf24" },
+  { name: "Referral",       pct: 5,  color: "#5c7a8e" },
+];
+
+function Donut() {
+  const r = 32, c = 2 * Math.PI * r;
+  let acc = 0;
+  return (
+    <svg width="82" height="82" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(125,229,255,0.08)" strokeWidth="8" />
+      {TC_CATS.map((cat, i) => {
+        const dash = (cat.pct / 100) * c;
+        const offset = -acc;
+        acc += dash;
+        return <circle key={i} cx="50" cy="50" r={r} fill="none" stroke={cat.color} strokeWidth="8" strokeLinecap="butt" strokeDasharray={`${dash} ${c}`} strokeDashoffset={offset} transform="rotate(-90 50 50)" style={{ filter: `drop-shadow(0 0 4px ${cat.color}aa)` }} />;
+      })}
+    </svg>
+  );
+}
+
+function TopCategoriesCard() {
+  const tilt = useTilt(4);
+  return (
+    <div ref={tilt} className="ap-card">
+      <div className="ap-card-title">Traffic Sources</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
+        <Donut />
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
+          {TC_CATS.map((cat, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 6, fontFamily: "var(--font-body)", fontSize: 10 }}>
+              <span style={{ width: 6, height: 6, borderRadius: 99, background: cat.color, boxShadow: `0 0 5px ${cat.color}`, flexShrink: 0 }} />
+              <span style={{ flex: 1, color: "var(--fg-2)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{cat.name}</span>
+              <span style={{ color: "var(--fg-3)", fontFamily: "var(--font-mono)", fontSize: 10 }}>{cat.pct}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── intel map ────────────────────────────────────────────────────────────── */
+const FL_PATH = "M 28 50 L 52 47 L 80 48 L 105 50 L 122 48 L 138 50 L 152 54 L 165 60 L 172 70 L 178 84 L 182 100 L 185 118 L 184 136 L 178 152 L 168 164 L 154 172 L 138 174 L 124 168 L 118 158 L 114 144 L 110 128 L 106 112 L 100 96 L 92 84 L 80 76 L 65 72 L 52 70 L 40 66 L 32 60 Z";
+const PINGS = [
+  { x: 122, y: 58,  name: "ORLANDO",    hot: false },
+  { x: 110, y: 80,  name: "TAMPA",      hot: false },
+  { x: 132, y: 110, name: "FORT MYERS", hot: true  },
+  { x: 158, y: 168, name: "MIAMI",      hot: false },
+];
+
+function IntelMap() {
+  const tilt = useTilt(4);
+  return (
+    <div ref={tilt} className="ap-card">
+      <div className="ap-card-head"><div className="ap-card-title">Active Territory</div><span className="ap-live-dot">Live</span></div>
+      <svg viewBox="0 0 200 200" style={{ width: "100%", height: 200 }}>
+        <defs>
+          <linearGradient id="ap-fl-grad" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="rgba(0,229,255,0.18)" />
+            <stop offset="1" stopColor="rgba(0,229,255,0.05)" />
+          </linearGradient>
+          <pattern id="ap-grid" width="10" height="10" patternUnits="userSpaceOnUse">
+            <path d="M10 0 L0 0 0 10" fill="none" stroke="rgba(125,229,255,0.08)" strokeWidth="0.4" />
+          </pattern>
+        </defs>
+        <rect width="200" height="200" fill="url(#ap-grid)" />
+        <path d={FL_PATH} fill="url(#ap-fl-grad)" stroke="rgba(0,229,255,0.55)" strokeWidth="0.8" style={{ filter: "drop-shadow(0 0 6px rgba(0,229,255,0.4))" }} />
+        {PINGS.map((p, i) => (
+          <g key={i}>
+            <circle cx={p.x} cy={p.y} r="3" fill={p.hot ? "#ff4d6d" : "#00e5ff"} style={{ filter: `drop-shadow(0 0 6px ${p.hot ? "#ff4d6d" : "#00e5ff"})` }}>
+              <animate attributeName="r" values="3;5;3" dur="2s" repeatCount="indefinite" begin={`${i * 0.3}s`} />
+            </circle>
+            <circle cx={p.x} cy={p.y} r="3" fill="none" stroke={p.hot ? "#ff4d6d" : "#00e5ff"} strokeWidth="0.6" opacity="0.5">
+              <animate attributeName="r" values="3;14;3" dur="2s" repeatCount="indefinite" begin={`${i * 0.3}s`} />
+              <animate attributeName="opacity" values="0.6;0;0.6" dur="2s" repeatCount="indefinite" begin={`${i * 0.3}s`} />
+            </circle>
+            <text x={p.x + (p.x > 150 ? -6 : 8)} y={p.y + 1.5} fontFamily="var(--font-heading)" fontSize="5" letterSpacing="0.2em" textAnchor={p.x > 150 ? "end" : "start"} fill="#c4dbe8">{p.name}</text>
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+/* ── ai signal ────────────────────────────────────────────────────────────── */
+const AI_ROWS = [
+  { name: "Conversion Rate", val: 847, frac: 0.94 },
+  { name: "High Intent",     val: 632, frac: 0.78 },
+  { name: "Qualified",       val: 421, frac: 0.61 },
+];
+
+function AISignal() {
+  const tilt = useTilt(4);
+  const r = 30, c = 2 * Math.PI * r, pct = 0.89;
+  return (
+    <div ref={tilt} className="ap-card">
+      <div className="ap-card-title">AI Performance Score</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
+        <div style={{ position: "relative", width: 74, height: 74, flexShrink: 0 }}>
+          <svg width="74" height="74" viewBox="0 0 80 80">
+            <circle cx="40" cy="40" r={r} fill="none" stroke="rgba(125,229,255,0.12)" strokeWidth="6" />
+            <circle cx="40" cy="40" r={r} fill="none" stroke="#00e5ff" strokeWidth="6" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - pct)} transform="rotate(-90 40 40)" style={{ filter: "drop-shadow(0 0 6px rgba(0,229,255,0.7))" }} />
+          </svg>
+          <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+            <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 22, color: "var(--fg-1)", lineHeight: 1 }}>94</span>
+            <span style={{ fontFamily: "var(--font-heading)", fontSize: 6, letterSpacing: "0.22em", textTransform: "uppercase", color: "var(--fg-3)", marginTop: 2 }}>ELITE</span>
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+          {AI_ROWS.map((row, i) => (
+            <div key={i}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontFamily: "var(--font-body)", fontSize: 10, color: "var(--fg-2)", marginBottom: 2 }}>
+                <span>{row.name}</span>
+                <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--fg-1)", fontSize: 11 }}>{row.val}</span>
+              </div>
+              <div style={{ height: 3, background: "rgba(125,229,255,0.08)", borderRadius: 2, overflow: "hidden" }}>
+                <div style={{ width: (row.frac * 100) + "%", height: "100%", background: "linear-gradient(90deg,#00e5ff,#7fe5ff)", boxShadow: "0 0 6px rgba(0,229,255,0.6)" }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── automation card ──────────────────────────────────────────────────────── */
+const AT_FLOWS = [
+  { name: "Content Scheduler", running: true },
+  { name: "Lead Nurturing",    running: true },
+  { name: "AI Ad Optimizer",   running: true },
+];
+
+function AutomationCard() {
+  const tilt = useTilt(4);
+  return (
+    <div ref={tilt} className="ap-card">
+      <div className="ap-card-title">Automation Engine</div>
+      <div style={{ fontFamily: "var(--font-heading)", fontSize: 9, letterSpacing: "0.22em", textTransform: "uppercase", color: "var(--fg-mute)", marginTop: 4, marginBottom: 8 }}>ACTIVE WORKFLOWS</div>
+      {AT_FLOWS.map((f, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderTop: i === 0 ? "none" : "1px solid var(--line-1)" }}>
+          <span style={{ flex: 1, fontFamily: "var(--font-body)", fontSize: 12, color: "var(--fg-1)" }}>{f.name}</span>
+          <span style={{ fontFamily: "var(--font-heading)", fontSize: 9, letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--signal-live)", display: "flex", alignItems: "center", gap: 5 }}>
+            <span style={{ width: 5, height: 5, borderRadius: 99, background: "var(--signal-live)", boxShadow: "0 0 6px var(--signal-live)" }} />
+            Running
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ── stat strip ───────────────────────────────────────────────────────────── */
+const SS_STATS = [
+  { val: "3,847",  lbl: "LEADS GENERATED" },
+  { val: "3.2M",   lbl: "REACH THIS MONTH" },
+  { val: "68%",    lbl: "AVG OPEN RATE" },
+  { val: "4.2x",   lbl: "AVERAGE ROAS" },
+  { val: "99.98%", lbl: "ALWAYS ON" },
+];
+
+const IcnUsers = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
+const IcnShield = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></svg>;
+const IcnZap = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg>;
+const IcnTarget = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>;
+const IcnCheck = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>;
+const SS_ICONS = [IcnUsers, IcnShield, IcnZap, IcnTarget, IcnCheck];
+
+function StatStrip() {
+  return (
+    <div className="ap-stat-strip">
+      {SS_STATS.map((s, i) => {
+        const Icon = SS_ICONS[i];
+        return (
+          <div key={i} className="ap-stat">
+            <div className="ap-stat-icon"><span style={{ width: 18, height: 18, display: "block" }}><Icon /></span></div>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <span className="ap-stat-val">{s.val}</span>
+              <span className="ap-stat-lbl">{s.lbl}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── hero ─────────────────────────────────────────────────────────────────── */
+function Hero() {
+  const megRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!megRef.current) return;
+      megRef.current.classList.add("bite-active");
+      setTimeout(() => megRef.current?.classList.remove("bite-active"), 1800);
+    }, 14000);
+    return () => clearInterval(id);
   }, []);
 
   return (
-    <div className="min-h-screen text-white overflow-x-hidden" style={{ backgroundColor: "#030014" }}>
-      <div className="fixed inset-0 bg-grid z-0 pointer-events-none" />
+    <section className="ap-hero">
+      <div ref={megRef} className="ap-meg" aria-hidden>
+        <img className="ap-meg-photo" src="/apex-hero-reference.jpeg" alt="" />
+      </div>
 
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-black/60 backdrop-blur-xl border-b border-white/5">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src="/apex-logo.png" alt="Apex" className="w-8 h-8" />
-            <span className="font-black text-white tracking-tight hidden sm:block">APEX <span className="text-indigo-400 font-light text-xs">MARKETING AUTOMATIONS</span></span>
+      <aside className="ap-rail ap-rail-left">
+        <IntelFeed />
+        <IncidentsCard />
+        <TopCategoriesCard />
+      </aside>
+
+      <div className="ap-stage">
+        <div className="ap-hero-center">
+          <ApexLogo size={88} />
+          <h1 className="ap-tagline">Most agencies talk. We automate.</h1>
+          <p className="ap-sub">Apex builds the AI-powered marketing engine behind your business — lead gen, content, email, paid ads — all running on autopilot while you focus on what you actually do.</p>
+          <div className="ap-ctas">
+            <Link href="/login" className="ap-btn ap-btn-primary">See What We Build →</Link>
+            <Link href="/login" className="ap-btn ap-btn-secondary">Book a Call</Link>
           </div>
-          <div className="hidden md:flex items-center gap-8 text-sm text-slate-400">
-            <a href="#features" className="hover:text-white transition-colors">Features</a>
-            <a href="#apex-intelligence" className="hover:text-white transition-colors">Intelligence</a>
-            <a href="#industries" className="hover:text-white transition-colors">Industries</a>
-            <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
-            <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
-            <Link href="/demo" className="hover:text-white transition-colors">Live Demo</Link>
-          </div>
-          <a
-            href="/login"
-            className="px-5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-sm font-bold rounded-lg transition-all shadow-lg shadow-indigo-500/20"
-            data-testid="button-nav-login"
-          >
-            Sign In
-          </a>
         </div>
-      </nav>
+      </div>
 
-      {/* Hero */}
-      <section className="relative pt-24 md:pt-28 min-h-[92vh] flex items-stretch">
-        <div className="absolute inset-0 pointer-events-none">
-          <HomeHero3D className="absolute inset-0" accent="#7c3aed" />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/15 via-black/30 to-[#030014]" />
-        </div>
+      <aside className="ap-rail ap-rail-right">
+        <IntelMap />
+        <AISignal />
+        <AutomationCard />
+      </aside>
 
-        <div className="relative z-10 px-6 pt-14 pb-20 md:pt-24 md:pb-32 w-full">
-          <div className="max-w-5xl mx-auto text-center">
-          <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5 }}>
-            <div className="inline-flex items-center gap-2 px-5 py-2 rounded-full text-xs font-bold border border-red-500/40 bg-red-500/10 text-red-400 mb-6 animate-pulse" data-testid="badge-blitz">
-              <Zap size={14} /> 30-DAY LAUNCH BLITZ — 50% OFF LOCKED FOREVER
-            </div>
-          </motion.div>
+      <StatStrip />
+    </section>
+  );
+}
 
-          <motion.h1
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15 }}
-            className="text-4xl md:text-6xl lg:text-7xl font-black tracking-tight leading-[1.05] mb-6"
-            data-testid="text-hero-title"
-          >
-            <span className="block">AI marketing that</span>
-            <span className="block bg-gradient-to-r from-indigo-400 via-purple-400 to-cyan-400 bg-clip-text text-transparent">
-              actually gets the work done.
-            </span>
-          </motion.h1>
+/* ── bubble orbs ──────────────────────────────────────────────────────────── */
+function BubbleOrbs({ count = 22 }: { count?: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mouse = useRef({ x: -9999, y: -9999 });
 
-          <motion.p
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="text-lg md:text-xl text-slate-300 max-w-2xl mx-auto mb-8"
-            data-testid="text-hero-subtitle"
-          >
-            Apex helps you capture leads, follow up automatically, book more appointments, and run your marketing from one place — without juggling five different tools.
-          </motion.p>
+  useEffect(() => {
+    const canvas = canvasRef.current!;
+    const ctx = canvas.getContext("2d")!;
+    const resize = () => {
+      canvas.width = canvas.offsetWidth * devicePixelRatio;
+      canvas.height = canvas.offsetHeight * devicePixelRatio;
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.scale(devicePixelRatio, devicePixelRatio);
+    };
+    resize();
+    const ro = new ResizeObserver(() => { ctx.setTransform(1,0,0,1,0,0); resize(); });
+    ro.observe(canvas);
+    const onMove = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      mouse.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    };
+    window.addEventListener("mousemove", onMove);
+    const W = () => canvas.offsetWidth, H = () => canvas.offsetHeight;
+    const orbs = Array.from({ length: count }, () => ({
+      x: Math.random() * W(), y: Math.random() * H(),
+      r: 18 + Math.random() * 56,
+      vx: (Math.random() - 0.5) * 0.35,
+      vy: (Math.random() - 0.5) * 0.35 - 0.08,
+      alpha: 0.28 + Math.random() * 0.38,
+      hue: 182 + Math.random() * 24,
+    }));
+    let raf: number;
+    const draw = () => {
+      const w = W(), h = H();
+      ctx.clearRect(0, 0, w, h);
+      const mx = mouse.current.x, my = mouse.current.y;
+      orbs.forEach((o) => {
+        const dx = o.x - mx, dy = o.y - my;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        const repel = 160;
+        if (d < repel && d > 0.5) { const f = ((repel - d) / repel) * 0.9; o.vx += (dx / d) * f * 0.12; o.vy += (dy / d) * f * 0.12; }
+        o.vx *= 0.974; o.vy *= 0.974; o.vy -= 0.004;
+        const spd = Math.sqrt(o.vx * o.vx + o.vy * o.vy);
+        if (spd > 3.5) { o.vx = (o.vx / spd) * 3.5; o.vy = (o.vy / spd) * 3.5; }
+        o.x += o.vx; o.y += o.vy;
+        if (o.x < -o.r * 2) o.x = w + o.r;
+        if (o.x > w + o.r * 2) o.x = -o.r;
+        if (o.y < -o.r * 2) o.y = h + o.r;
+        if (o.y > h + o.r * 2) o.y = -o.r;
+        ctx.save();
+        ctx.shadowBlur = 28; ctx.shadowColor = `hsla(${o.hue},100%,68%,${o.alpha * 0.7})`;
+        const body = ctx.createRadialGradient(o.x, o.y, o.r * 0.1, o.x, o.y, o.r);
+        body.addColorStop(0, `hsla(${o.hue},90%,80%,${o.alpha * 0.06})`);
+        body.addColorStop(0.65, `hsla(${o.hue},100%,62%,${o.alpha * 0.08})`);
+        body.addColorStop(1, `hsla(${o.hue},100%,55%,${o.alpha * 0.28})`);
+        ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2); ctx.fillStyle = body; ctx.fill();
+        ctx.shadowBlur = 0;
+        const rim = ctx.createLinearGradient(o.x - o.r, o.y - o.r, o.x + o.r, o.y + o.r);
+        rim.addColorStop(0, `hsla(${o.hue},100%,92%,${o.alpha * 0.9})`);
+        rim.addColorStop(0.45, `hsla(${o.hue},100%,75%,${o.alpha * 0.5})`);
+        rim.addColorStop(1, `hsla(${o.hue},80%,55%,${o.alpha * 0.15})`);
+        ctx.strokeStyle = rim; ctx.lineWidth = 1.2; ctx.stroke();
+        const hiR = o.r * 0.42, hiX = o.x - o.r * 0.32, hiY = o.y - o.r * 0.32;
+        const spec = ctx.createRadialGradient(hiX, hiY, 0, hiX, hiY, hiR);
+        spec.addColorStop(0, `rgba(255,255,255,${o.alpha * 0.72})`);
+        spec.addColorStop(0.5, `rgba(255,255,255,${o.alpha * 0.18})`);
+        spec.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.beginPath(); ctx.arc(o.x, o.y, o.r * 0.88, 0, Math.PI * 2); ctx.clip();
+        ctx.beginPath(); ctx.arc(hiX, hiY, hiR, 0, Math.PI * 2); ctx.fillStyle = spec; ctx.fill();
+        ctx.restore();
+      });
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    return () => { cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener("mousemove", onMove); };
+  }, [count]);
 
-          <motion.ul
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="max-w-xl mx-auto mb-10 space-y-2 text-left"
-            data-testid="list-hero-bullets"
-          >
-            {[
-              "Automate follow-ups, campaigns, and lead management",
-              "Keep every conversation, contact, and task in one system",
-              "Built for real businesses that want results, not more software",
-            ].map((bullet, idx) => (
-              <li
-                key={idx}
-                className="flex items-start gap-3 text-slate-300 text-base md:text-lg"
-                data-testid={`text-hero-bullet-${idx}`}
-              >
-                <CheckCircle2 size={20} className="text-cyan-400 shrink-0 mt-0.5" />
-                <span>{bullet}</span>
-              </li>
-            ))}
-          </motion.ul>
+  return <canvas ref={canvasRef} className="ap-orbs-canvas" />;
+}
 
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-4"
-          >
-            <a
-              href="/login"
-              className="px-10 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-500/25 text-lg flex items-center gap-2 hover:scale-105 active:scale-95"
-              data-testid="button-hero-cta"
-            >
-              Start Free 30-Day Trial <ArrowRight size={20} />
-            </a>
-            <Link
-              href="/demo"
-              className="px-10 py-4 border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10 text-white font-bold rounded-xl transition-all text-lg"
-              data-testid="button-hero-demo"
-            >
-              Watch Live Demo
-            </Link>
-          </motion.div>
+/* ── feature cards ────────────────────────────────────────────────────────── */
+const FEATURES = [
+  { title: "First mover advantage.", body: "When a prospect is ready to buy, you're already in their inbox. Our AI watches intent signals across the web and triggers outreach before your competitors wake up.", icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10"/></svg> },
+  { title: "Content that converts.", body: "We don't post for the algorithm. Every piece of content we build is engineered to move people toward a decision — not just rack up impressions.", icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> },
+  { title: "Your market. Your leads.", body: "Tell us who you serve and where. We build hyper-targeted campaigns for your exact audience — not generic ads thrown at a zip code and hoped for.", icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z"/><circle cx="12" cy="10" r="3"/></svg> },
+  { title: "Set it. Watch it run.", body: "Connect your CRM, inbox, and ad accounts. Our automation layer ties it all together so leads flow in and nurture sequences fire — without you lifting a finger.", icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg> },
+  { title: "Know your numbers.", body: "Real-time dashboards, campaign analytics, ROAS tracking — you know exactly what's working and what's not before you spend another dollar on ads.", icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12h3l3-9 4 18 3-9h7"/></svg> },
+  { title: "We stay in it with you.", body: "No 6-month contracts and disappearing acts. We're embedded in your business — adjusting, optimizing, and reporting every week until the numbers move.", icon: <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg> },
+];
 
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.6 }}
-            className="text-xs text-slate-600 mt-6"
-          >
-            No credit card required. Cancel anytime.
-          </motion.p>
-          </div>
+function FeatureCard({ icon, title, body, delay }: { icon: JSX.Element; title: string; body: string; delay: number }) {
+  const ref = useReveal();
+  return (
+    <div ref={ref} className="ap-feature ap-reveal" style={{ transitionDelay: `${delay}ms` }}>
+      <div className="ap-ficon">{icon}</div>
+      <h3>{title}</h3>
+      <p>{body}</p>
+    </div>
+  );
+}
+
+/* ── deep sections ────────────────────────────────────────────────────────── */
+function DeepSections() {
+  const s1 = useReveal(), s2 = useReveal(), s3 = useReveal();
+  const sub1 = useReveal(), sub2 = useReveal(), sub3 = useReveal();
+  const eye1 = useReveal(), eye2 = useReveal(), eye3 = useReveal();
+  const statsBox = useReveal(), ctas = useReveal();
+
+  return (
+    <div className="ap-orbs-wrap">
+      <BubbleOrbs count={22} />
+
+      <section className="ap-section">
+        <div ref={eye1} className="ap-eyebrow ap-reveal">WHAT WE BUILD</div>
+        <h2 ref={s1} className="ap-reveal">Every business deserves a <em>marketing engine</em>. Not just a marketing agency.</h2>
+        <p ref={sub1} className="ap-sub-center ap-reveal">You're good at what you do. What you don't need is to become a marketing expert on top of it. That's what we're here for — we build the system, you run the business.</p>
+        <div className="ap-feature-grid">
+          {FEATURES.map((f, i) => <FeatureCard key={i} icon={f.icon} title={f.title} body={f.body} delay={i * 80} />)}
         </div>
       </section>
 
-      {/* Stats Bar */}
-      <section className="relative z-10 py-8 border-y border-white/5 bg-white/[0.02]">
-        <div className="max-w-5xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-6">
-          {stats.map((stat, i) => (
-            <motion.div
-              key={stat.label}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: i * 0.1 }}
-              className="text-center"
-            >
-              <div className="text-3xl md:text-4xl font-black text-white">{stat.value}</div>
-              <div className="text-xs text-slate-500 mt-1 uppercase tracking-wider">{stat.label}</div>
-            </motion.div>
+      <section className="ap-section" style={{ paddingTop: 80 }}>
+        <div ref={eye2} className="ap-eyebrow ap-reveal">WHILE YOU WORK</div>
+        <h2 ref={s2} className="ap-reveal">You're busy <em>running it</em>. We'll watch for what's next.</h2>
+        <p ref={sub2} className="ap-sub-center ap-reveal">Every county in Florida. Every accident report, court filing, and property record. Every minute of every day. Looking for the one that's worth your call.</p>
+        <div ref={statsBox} className="ap-reveal" style={{ marginTop: 64, padding: "40px 32px", background: "rgba(8,24,44,0.55)", backdropFilter: "blur(20px) saturate(140%)", border: "1px solid var(--line-2)", borderRadius: 18, boxShadow: "0 12px 48px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.06)", display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 32 }}>
+          {[{ v: "67", l: "COUNTIES COVERED" }, { v: "23K+", l: "RECORDS PER DAY" }, { v: "2.7 SEC", l: "AVG ALERT TIME" }, { v: "$0", l: "EXTRA HEADCOUNT" }].map((s, i) => (
+            <div key={i} style={{ textAlign: "center" }}>
+              <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 56, color: "var(--fg-1)", letterSpacing: "-0.02em", lineHeight: 1, textShadow: "0 0 24px rgba(0,229,255,0.3)" }}>{s.v}</div>
+              <div style={{ fontFamily: "var(--font-heading)", fontSize: 10, letterSpacing: "0.22em", textTransform: "uppercase", color: "var(--fg-3)", marginTop: 10 }}>{s.l}</div>
+            </div>
           ))}
         </div>
       </section>
 
-      {/* Features Grid */}
-      <section id="features" className="relative z-10 py-20 md:py-28 px-6">
-        <div className="max-w-7xl mx-auto">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-100px" }} className="text-center mb-16">
-            <motion.div variants={fadeUp} custom={0}>
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold border border-white/10 bg-white/5 text-slate-400 mb-4">
-                The Full Platform — 35+ Tools
-              </div>
-            </motion.div>
-            <motion.h2 variants={fadeUp} custom={1} className="text-3xl md:text-5xl font-black tracking-tight" data-testid="text-features-title">
-              The entire stack. <span className="bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">Already built.</span>
-            </motion.h2>
-            <motion.p variants={fadeUp} custom={2} className="text-slate-300 mt-4 max-w-2xl mx-auto text-base md:text-lg">
-              35+ tools across 7 categories — replacing GoHighLevel, HubSpot, Twilio Flex, Vapi, Manychat, Calendly, Mailchimp, Zapier and a dozen others. All under one login, one bill, one AI brain.
-            </motion.p>
-            <motion.div variants={fadeUp} custom={3} className="mt-8 flex items-center justify-center">
-              <button
-                type="button"
-                onClick={() => setShowAllFeatures((v) => !v)}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-sm font-bold text-white transition-colors"
-                data-testid="button-features-toggle"
-              >
-                {showAllFeatures ? (
-                  <>
-                    <ChevronUp size={16} /> Show less
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown size={16} /> Show all tools
-                  </>
-                )}
-              </button>
-            </motion.div>
-          </motion.div>
-
-          <div className="space-y-14">
-            {toolGroups.map((group, gi) => (
-              <motion.div
-                key={group.category}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true, margin: "-50px" }}
-                data-testid={`group-${group.category.toLowerCase().replace(/\s+/g, "-")}`}
-              >
-                <motion.div variants={fadeUp} custom={0} className="mb-6 flex items-end justify-between flex-wrap gap-2">
-                  <div>
-                    <div className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-400 mb-2">
-                      {String(gi + 1).padStart(2, "0")} / {String(toolGroups.length).padStart(2, "0")}
-                    </div>
-                    <h3 className="text-2xl md:text-3xl font-black text-white tracking-tight">{group.category}</h3>
-                  </div>
-                  <p className="text-sm text-slate-400 max-w-md text-right">{group.tagline}</p>
-                </motion.div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {(showAllFeatures ? group.tools : group.tools.slice(0, 3)).map((tool, i) => {
-                    const c = colorMap[tool.color] || colorMap.cyan;
-                    return (
-                      <motion.div
-                        key={tool.title}
-                        variants={fadeUp}
-                        custom={i + 1}
-                        data-testid={`card-feature-${tool.title.toLowerCase().replace(/\s+/g, "-")}`}
-                      >
-                        <div className={`group h-full bg-white/[0.03] border ${c.border} rounded-lg p-5 hover:bg-white/[0.06] hover:border-white/20 transition-all duration-300`}>
-                          <div className="flex items-start gap-4">
-                            <div className={`w-11 h-11 rounded-xl ${c.bg} flex items-center justify-center shrink-0`}>
-                              <tool.icon size={22} className={c.text} />
-                            </div>
-                            <div>
-                              <h4 className="text-base font-bold text-white mb-1.5">{tool.title}</h4>
-                              <p className="text-xs text-slate-400 leading-relaxed">{tool.desc}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              </motion.div>
-            ))}
-          </div>
+      <section className="ap-section" style={{ paddingTop: 80, paddingBottom: 80 }}>
+        <div ref={eye3} className="ap-eyebrow ap-reveal">WHEN YOU'RE READY</div>
+        <h2 ref={s3} className="ap-reveal">Pick up the phone <em>before they do</em>.</h2>
+        <p ref={sub3} className="ap-sub-center ap-reveal">Your competition is already making calls. Waiting usually costs more than moving. Two weeks from today, you could be hearing about leads you would have never known existed.</p>
+        <div ref={ctas} className="ap-reveal" style={{ display: "flex", justifyContent: "center", gap: 14, marginTop: 8 }}>
+          <Link href="/login" className="ap-btn ap-btn-primary">Get Started →</Link>
+          <Link href="/login" className="ap-btn ap-btn-secondary">Talk to Someone</Link>
         </div>
       </section>
+    </div>
+  );
+}
 
-      {/* Industries */}
-      <section id="industries" className="relative z-10 py-20 md:py-28 px-6 bg-gradient-to-b from-transparent via-cyan-600/5 to-transparent">
-        <div className="max-w-6xl mx-auto">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} className="text-center mb-12">
-            <motion.div variants={fadeUp} custom={0}>
-              <div className="inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.3em] text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 mb-4">
-                Pre-Built Templates Included
-              </div>
-            </motion.div>
-            <motion.h2 variants={fadeUp} custom={1} className="text-3xl md:text-5xl font-black tracking-tight" data-testid="text-industries-title">
-              Built for <span className="bg-gradient-to-r from-cyan-400 to-indigo-400 bg-clip-text text-transparent">your industry</span>
-            </motion.h2>
-            <motion.p variants={fadeUp} custom={2} className="text-slate-400 mt-4 max-w-2xl mx-auto">
-              16 ready-to-deploy industry templates with pre-built funnels, AI bot personas, follow-up sequences, and ad creative. Pick yours and launch in minutes.
-            </motion.p>
-          </motion.div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {industries.map((ind, i) => (
-              <motion.a
-                key={ind.name}
-                href={ind.path}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true, margin: "-30px" }}
-                variants={fadeUp}
-                custom={i}
-                className="group flex items-center gap-3 p-4 bg-white/[0.03] border border-white/10 hover:border-cyan-500/40 hover:bg-white/[0.06] rounded-xl transition-all"
-                data-testid={`link-industry-${ind.name.toLowerCase().replace(/\s+/g, "-").replace(/&/g, "and")}`}
-              >
-                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 border border-indigo-500/20 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
-                  <ind.icon size={16} className="text-indigo-400" />
-                </div>
-                <span className="text-sm font-semibold text-slate-200 group-hover:text-white transition-colors leading-tight">{ind.name}</span>
-              </motion.a>
-            ))}
-          </div>
-
-          <motion.p
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            className="text-center text-xs text-slate-500 mt-8"
-          >
-            Don't see your industry? Apex works for any business — and the AI Site Builder generates a custom funnel from a single prompt.
-          </motion.p>
-        </div>
-      </section>
-
-      {/* Social Proof */}
-      <section className="relative z-10 py-16 px-6 bg-gradient-to-b from-transparent via-indigo-600/5 to-transparent">
-        <div className="max-w-5xl mx-auto text-center">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }}>
-            <motion.h2 variants={fadeUp} custom={0} className="text-3xl md:text-5xl font-black tracking-tight mb-4">
-              Why Choose <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">Apex</span>
-            </motion.h2>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-12">
-            {[
-              { icon: Users, title: "White-Label Ready", desc: "Fully rebrandable. Your logo, your domain, your clients. They never see our name." },
-              { icon: Sparkles, title: "AI-Native Platform", desc: "Gemini AI powers chatbots, ad copy, site generation, voice agents, and sentiment analysis." },
-              { icon: CircleDollarSign, title: "Built-In Revenue Engine", desc: "Markup pricing on every SMS, call, AI generation, and domain. You profit on every transaction." },
-            ].map((item, i) => (
-              <motion.div
-                key={item.title}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true }}
-                variants={fadeUp}
-                custom={i}
-              >
-                <div className="text-center p-8 bg-white/[0.03] border border-white/10 rounded-2xl h-full hover:border-white/20 transition-colors">
-                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-purple-500/20 border border-indigo-500/20 mb-5">
-                    <item.icon size={28} className="text-indigo-400" />
-                  </div>
-                  <h3 className="text-xl font-bold text-white mb-3">{item.title}</h3>
-                  <p className="text-sm text-slate-400 leading-relaxed">{item.desc}</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing */}
-      <section id="pricing" className="relative z-10 py-20 md:py-28 px-6">
-        <div className="max-w-7xl mx-auto">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} className="text-center mb-16">
-            <motion.div variants={fadeUp} custom={0}>
-              <div className="inline-block px-4 py-1 rounded-full border border-red-500/50 bg-red-500/10 text-red-500 text-[10px] font-black uppercase tracking-[0.4em] mb-6 animate-pulse">
-                Live Event: 30-Day Launch Blitz
-              </div>
-            </motion.div>
-            <motion.h2 variants={fadeUp} custom={1} className="text-4xl md:text-6xl font-black tracking-tighter mb-4" data-testid="text-pricing-title">
-              Grandfathered <span className="bg-gradient-to-r from-cyan-400 via-purple-500 to-red-500 bg-clip-text text-transparent">For Life.</span>
-            </motion.h2>
-            <motion.p variants={fadeUp} custom={2} className="text-slate-400 text-lg max-w-2xl mx-auto">
-              Secure <span className="text-white font-bold">50% off all tiers</span> forever. If you stay active, your price never changes. Ever.
-            </motion.p>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            {tiers.map((tier, i) => (
-              <motion.div
-                key={tier.id}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                data-testid={`card-pricing-${tier.id}`}
-              >
-                <div className={`relative group p-[1px] rounded-3xl bg-gradient-to-b ${tier.gradient} transition-all duration-500 hover:scale-[1.02]`}>
-                  <div className="bg-[#080808] rounded-[23px] p-8 h-full flex flex-col relative overflow-hidden">
-                    <div className={`absolute -top-24 -right-24 w-48 h-48 bg-gradient-to-br ${tier.gradient} opacity-10 blur-3xl group-hover:opacity-20 transition-opacity`} />
-
-                    {tier.popular && (
-                      <span className="absolute top-4 right-4 bg-cyan-500 text-black text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-widest">
-                        Most Popular
-                      </span>
-                    )}
-
-                    <h3 className="text-sm font-black text-gray-500 uppercase tracking-[0.3em] mb-2">{tier.name}</h3>
-                    <div className="flex items-baseline gap-3 mb-4">
-                      <span className="text-5xl font-black text-white">${tier.price}</span>
-                      <span className="text-gray-500 line-through text-xl">${tier.originalPrice}</span>
-                      <span className="text-cyan-500 font-mono text-xs">/mo</span>
-                    </div>
-
-                    <p className="text-gray-400 text-sm mb-8 leading-relaxed">{tier.description}</p>
-
-                    <ul className="space-y-3 mb-10 flex-grow">
-                      {tier.features.map((f) => (
-                        <li key={f} className="flex items-start gap-2 text-sm text-gray-300">
-                          <CheckCircle2 size={14} className="text-cyan-400 mt-0.5 shrink-0" /> {f}
-                        </li>
-                      ))}
-                    </ul>
-
-                    <a
-                      href="/login"
-                      className={`w-full py-4 rounded-xl font-black uppercase tracking-widest transition-all shadow-lg text-center block ${
-                        tier.popular
-                          ? "bg-white text-black hover:bg-cyan-400"
-                          : "bg-transparent border border-white/20 text-white hover:bg-white/5"
-                      }`}
-                      data-testid={`button-pricing-${tier.id}`}
-                    >
-                      Start Free Trial
-                    </a>
-                    <p className="text-[9px] text-center text-gray-600 mt-4 uppercase tracking-widest">
-                      30-day free trial included
-                    </p>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-
-          <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            viewport={{ once: true }}
-            className="flex flex-col items-center mt-12"
-          >
-            <div className="w-full max-w-md bg-white/5 h-1 rounded-full overflow-hidden mb-4">
-              <motion.div
-                className="bg-gradient-to-r from-cyan-500 to-purple-600 h-full"
-                initial={{ width: 0 }}
-                whileInView={{ width: `${100 - slotsLeft}%` }}
-                viewport={{ once: true }}
-                transition={{ duration: 1.5, ease: "easeOut" }}
-              />
-            </div>
-            <p className="text-[10px] font-mono text-gray-500 uppercase tracking-widest" data-testid="text-slots">
-              Limited Founders Slots: {slotsLeft} / 100 Remaining
-            </p>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Apex Intelligence Spotlight */}
-      <section id="apex-intelligence" className="relative z-10 py-20 md:py-28 px-6 bg-gradient-to-b from-transparent via-violet-600/10 to-transparent">
-        <div className="max-w-6xl mx-auto">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} className="text-center mb-12">
-            <motion.div variants={fadeUp} custom={0}>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-[0.3em] text-violet-300 bg-violet-500/10 border border-violet-500/30 mb-4">
-                <Brain size={12} /> The Brain Behind It All
-              </div>
-            </motion.div>
-            <motion.h2 variants={fadeUp} custom={1} className="text-3xl md:text-5xl font-black tracking-tight mb-4" data-testid="text-intelligence-title">
-              Meet <span className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400 bg-clip-text text-transparent">Apex Intelligence</span>
-            </motion.h2>
-            <motion.p variants={fadeUp} custom={2} className="text-slate-300 text-lg max-w-3xl mx-auto leading-relaxed">
-              An autonomous AI operator that runs your entire platform. Tell it what you want — it executes across CRM, ads, messaging, workflows, calendar, and reviews. Every action is logged, scored, and verifiable.
-            </motion.p>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {[
-              { icon: MessageCircle, title: "Just talk to it", desc: '"Send a follow-up to every lead from yesterday who didn\'t book." It does it. Then shows you the receipts.' },
-              { icon: Workflow, title: "Cross-platform execution", desc: "One command can fire ads, create contacts, build workflows, and send messages — across every connected channel." },
-              { icon: Eye, title: "Full transparency", desc: "Every API call, every error, every outcome is captured. No hidden actions. No black-box behavior." },
-              { icon: Activity, title: "Self-correcting", desc: "Detects fake completions, missing dependencies, and broken integrations. Tells you what to fix and how." },
-            ].map((item, i) => (
-              <motion.div
-                key={item.title}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true }}
-                variants={fadeUp}
-                custom={i}
-                data-testid={`card-intelligence-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
-              >
-                <div className="h-full p-6 rounded-2xl bg-gradient-to-br from-violet-500/10 to-fuchsia-500/5 border border-violet-500/20 hover:border-violet-500/40 transition-colors">
-                  <div className="flex items-start gap-4">
-                    <div className="w-11 h-11 rounded-xl bg-violet-500/20 flex items-center justify-center shrink-0">
-                      <item.icon size={22} className="text-violet-300" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-bold text-white mb-2">{item.title}</h3>
-                      <p className="text-sm text-slate-400 leading-relaxed">{item.desc}</p>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="mt-12 text-center"
-          >
-            <div className="inline-flex flex-wrap items-center justify-center gap-2 text-xs text-slate-400">
-              <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10">9 tool families</span>
-              <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10">76 policy rules</span>
-              <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10">105 module events tracked</span>
-              <span className="px-3 py-1 rounded-full bg-white/5 border border-white/10">Universal audit trail</span>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section id="faq" className="relative z-10 py-20 md:py-28 px-6">
-        <div className="max-w-3xl mx-auto">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} className="text-center mb-16">
-            <motion.h2 variants={fadeUp} custom={0} className="text-3xl md:text-5xl font-black tracking-tight">
-              Frequently Asked <span className="bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">Questions</span>
-            </motion.h2>
-          </motion.div>
-
-          <div className="space-y-3">
-            {faqs.map((faq, i) => (
-              <motion.div
-                key={i}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true }}
-                variants={fadeUp}
-                custom={i}
-              >
-                <button
-                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
-                  className="w-full text-left bg-white/[0.03] border border-white/10 rounded-xl p-5 hover:bg-white/[0.06] transition-colors"
-                  data-testid={`faq-${i}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-bold text-white pr-4">{faq.q}</p>
-                    {openFaq === i ? <ChevronUp size={16} className="text-slate-400 shrink-0" /> : <ChevronDown size={16} className="text-slate-400 shrink-0" />}
-                  </div>
-                  {openFaq === i && (
-                    <motion.p
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      className="text-sm text-slate-400 mt-3 leading-relaxed"
-                    >
-                      {faq.a}
-                    </motion.p>
-                  )}
-                </button>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Final CTA */}
-      <section className="relative z-10 py-20 md:py-28 px-6">
-        <div className="max-w-4xl mx-auto text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-          >
-            <div className="bg-gradient-to-r from-indigo-600/20 via-purple-600/20 to-cyan-600/20 border border-white/10 rounded-3xl p-12 md:p-16 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl from-indigo-500/20 to-transparent rounded-full blur-3xl pointer-events-none" />
-              <div className="absolute bottom-0 left-0 w-64 h-64 bg-gradient-to-tr from-purple-500/20 to-transparent rounded-full blur-3xl pointer-events-none" />
-
-              <div className="relative z-10">
-                <h2 className="text-3xl md:text-5xl font-black tracking-tight mb-4">
-                  Ready to Build Your <span className="bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-transparent">Empire?</span>
-                </h2>
-                <p className="text-slate-400 text-lg mb-8 max-w-xl mx-auto">
-                  Join founders who are automating their growth with AI. Start your 30-day free trial today.
-                </p>
-                <a
-                  href="/login"
-                  className="inline-flex items-center gap-2 px-10 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-500/25 text-lg hover:scale-105 active:scale-95"
-                  data-testid="button-final-cta"
-                >
-                  Get Started Free <ArrowRight size={20} />
-                </a>
-                <div className="flex items-center justify-center gap-6 mt-6 text-xs text-slate-500">
-                  <span className="flex items-center gap-1"><Shield size={12} /> Cancel anytime</span>
-                  <span className="flex items-center gap-1"><CheckCircle2 size={12} /> 30-day trial</span>
-                  <span className="flex items-center gap-1"><Zap size={12} /> Cancel anytime</span>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="relative z-10 py-12 px-6 border-t border-white/5">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <img src="/apex-logo.png" alt="Apex" className="w-6 h-6" />
-                <span className="font-bold text-white text-sm">Apex Marketing Automations</span>
-              </div>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                The AI-powered command center for modern businesses. Manage communications, deploy AI agents, and automate growth.
-              </p>
-            </div>
-            <div>
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Product</h4>
-              <div className="space-y-2 text-xs text-slate-500">
-                <a href="#features" className="block hover:text-white transition-colors">Features</a>
-                <a href="#pricing" className="block hover:text-white transition-colors">Pricing</a>
-                <Link href="/demo" className="block hover:text-white transition-colors">Live Demo</Link>
-              </div>
-            </div>
-            <div>
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Industries</h4>
-              <div className="space-y-2 text-xs text-slate-500">
-                <a href="/medspa" className="block hover:text-white transition-colors">Med Spas</a>
-                <a href="/lawyers" className="block hover:text-white transition-colors">Personal Injury</a>
-                <a href="/realtors" className="block hover:text-white transition-colors">Real Estate</a>
-                <a href="/marketers" className="block hover:text-white transition-colors">Marketing Agencies</a>
-                <a href="#industries" className="block hover:text-white transition-colors">View all 16 →</a>
-              </div>
-            </div>
-            <div>
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-3">Legal</h4>
-              <div className="space-y-2 text-xs text-slate-500">
-                <span className="block">Privacy Policy</span>
-                <span className="block">Terms of Service</span>
-                <span className="block">Cookie Policy</span>
-              </div>
-            </div>
-          </div>
-          <div className="border-t border-white/5 pt-6 flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-xs text-slate-600">&copy; {new Date().getFullYear()} Apex Marketing Automations. All rights reserved.</p>
-            <div className="flex items-center gap-4">
-              <a href="/privacy" className="text-slate-500 hover:text-slate-300 text-xs transition-colors" data-testid="link-footer-privacy">Privacy Policy</a>
-              <a href="/terms" className="text-slate-500 hover:text-slate-300 text-xs transition-colors" data-testid="link-footer-terms">Terms of Service</a>
-              <a
-                href="/login"
-                className="text-indigo-400 hover:text-indigo-300 text-sm font-medium transition-colors"
-                data-testid="link-footer-login"
-              >
-                Sign In &rarr;
-              </a>
-            </div>
-          </div>
-        </div>
-      </footer>
-      <SalesChatbot niche="general" accentColor="#6366f1" />
+/* ── page ─────────────────────────────────────────────────────────────────── */
+export default function LandingPage() {
+  return (
+    <div className="apex-page">
+      <div className="ap-page">
+        <Atmosphere count={50} rays={14} />
+        <Nav />
+        <Hero />
+        <DeepSections />
+        <footer className="ap-footer">
+          <div className="ap-footer-word">APEX</div>
+          <div className="ap-footer-copy">© 2026 Apex Marketing Automations · Built for the people who actually do the work.</div>
+        </footer>
+      </div>
     </div>
   );
 }

@@ -546,7 +546,7 @@ export default function FrontDeskKioskPage() {
                       />
                       <div
                         className={cn(
-                          "absolute inset-0 rounded-full border border-rose-300/15 transition duration-700",
+                          "absolute inset-0 rounded-full border border-[#00e5ff]/15 transition duration-700",
                           voiceActive ? "animate-ping" : "opacity-60",
                         )}
                       />
@@ -587,7 +587,7 @@ export default function FrontDeskKioskPage() {
                           "h-14 rounded-full px-6 text-base",
                           voiceActive
                             ? "bg-white text-black hover:bg-white/90"
-                            : "bg-rose-600 text-white hover:bg-rose-500",
+                            : "bg-[#00b8d4] text-[#01040a] hover:bg-[#00e5ff]",
                         )}
                       >
                         {voiceConnecting ? (
@@ -613,7 +613,7 @@ export default function FrontDeskKioskPage() {
                       <div className="text-[11px] uppercase tracking-[0.22em] text-white/45">Voice Status</div>
                       <div className="mt-2 text-sm text-white/80">{voiceStage}</div>
                       {lastVoiceError ? (
-                        <div className="mt-2 text-sm text-rose-200">{lastVoiceError}</div>
+                        <div className="mt-2 text-sm text-[#7fe5ff]">{lastVoiceError}</div>
                       ) : null}
                     </div>
                   </div>
@@ -632,7 +632,7 @@ export default function FrontDeskKioskPage() {
 
                       <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
                         <div
-                          className="h-full rounded-full bg-gradient-to-r from-white via-rose-200 to-rose-500 transition-all duration-500"
+                          className="h-full rounded-full bg-gradient-to-r from-[#7fe5ff] via-[#00e5ff] to-[#00b8d4] transition-all duration-500"
                           style={{ width: `${progressPercent}%` }}
                         />
                       </div>
