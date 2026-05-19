@@ -2743,8 +2743,12 @@ export function registerPropertyRoutes(app: Express) {
     const source   = req.query.source as string | undefined;
     const search   = (req.query.search as string | undefined)?.toLowerCase().trim();
     const tag      = req.query.tag as string | undefined;
+    const tagsAny  = (req.query.tagsAny as string | undefined)?.split(",").map(s => s.trim()).filter(Boolean);
     const hasPhone = req.query.hasPhone === "true";
     const hideUnidentified = req.query.hideUnidentified === "true";
+    const smsOptOut = req.query.smsOptOut as string | undefined;   // "true" | "false"
+    const emailOptOut = req.query.emailOptOut as string | undefined; // "true" | "false"
+    const channel = req.query.channel as string | undefined;
     const sortBy   = (req.query.sortBy as string | undefined) ?? "createdAt";
     const sortDir  = (req.query.sortDir as string | undefined) === "asc" ? "asc" : "desc";
 
@@ -2772,6 +2776,10 @@ export function registerPropertyRoutes(app: Express) {
     if (tag) {
       conditions.push(sql`${contacts.tags} @> ARRAY[${tag}]::text[]`);
     }
+    if (tagsAny && tagsAny.length > 0) {
+      // Overlap operator: any tag in the list.
+      conditions.push(sql`${contacts.tags} && ${tagsAny}::text[]`);
+    }
     if (hasPhone) {
       conditions.push(isNotNull(contacts.phone));
       conditions.push(ne(contacts.phone, ""));
@@ -2779,6 +2787,11 @@ export function registerPropertyRoutes(app: Express) {
     if (hideUnidentified) {
       conditions.push(sql`COALESCE(${contacts.firstName}, '') !~* '^Unidentified'`);
     }
+    if (smsOptOut === "true") conditions.push(eq(contacts.smsOptOut, true));
+    if (smsOptOut === "false") conditions.push(eq(contacts.smsOptOut, false));
+    if (emailOptOut === "true") conditions.push(eq(contacts.emailOptOut, true));
+    if (emailOptOut === "false") conditions.push(eq(contacts.emailOptOut, false));
+    if (channel && channel !== "all") conditions.push(eq(contacts.channel, channel));
 
     const where = and(...conditions);
 
@@ -2839,6 +2852,44 @@ export function registerPropertyRoutes(app: Express) {
         skipTraced:     metricsRow?.skipTraced ?? 0,
         hiddenUnidentified: metricsRow?.hiddenUnidentified ?? 0,
       },
+    });
+  }));
+
+  // Facets for CRM filtering (sources + top tags).
+  app.get("/api/contacts/:subAccountId/facets", asyncHandler(async (req, res) => {
+    const subAccountId = parseIntParam(req.params.subAccountId, "subAccountId");
+    if (!(await verifyAccountOwnership(req, res, subAccountId))) return;
+
+    const { db } = await import("../db");
+    const { contacts } = await import("@shared/schema");
+    const { eq, desc, sql } = await import("drizzle-orm");
+
+    const sources = await db.select({
+      source: contacts.source,
+      count: sql<number>`count(*)::int`,
+    })
+      .from(contacts)
+      .where(eq(contacts.subAccountId, subAccountId))
+      .groupBy(contacts.source)
+      .orderBy(desc(sql`count(*)`))
+      .limit(50);
+
+    // tags: unnest array and count
+    const tags = await db.execute(sql`
+      SELECT tag, count(*)::int as count
+      FROM (
+        SELECT unnest(tags) as tag
+        FROM contacts
+        WHERE sub_account_id = ${subAccountId} AND tags IS NOT NULL
+      ) t
+      GROUP BY tag
+      ORDER BY count(*) DESC
+      LIMIT 80
+    `);
+
+    res.json({
+      sources: sources.map((r: any) => ({ source: r.source ?? "unknown", count: r.count ?? 0 })),
+      tags: (tags?.rows ?? []).map((r: any) => ({ tag: r.tag, count: r.count })),
     });
   }));
 

@@ -140,6 +140,13 @@ const GymFunnel = lazy(() => import("@/pages/gym-funnel"));
 const LuxeFunnel = lazy(() => import("@/pages/luxe-funnel"));
 const MarketersFunnel = lazy(() => import("@/pages/marketers-funnel"));
 
+// ── Service Business OS (internal dashboards) ────────────────────────────────
+const ServiceBusinessDashboard = lazy(() => import("@/pages/service/service-business-dashboard"));
+
+// ── Insurance Hub (internal dashboards) ─────────────────────────────────────
+const InsuranceIntelligence = lazy(() => import("@/pages/insurance/insurance-intelligence"));
+const InsuranceOpportunityExecutor = lazy(() => import("@/pages/insurance/opportunity-executor"));
+
 function PageLoader() {
   return (
     <div className="h-screen w-full flex bg-neutral-950">
@@ -361,8 +368,11 @@ function Router() {
                   <Route path="/snapshots" component={SnapshotsPage} />
                   <Route path="/sentinel" component={SentinelPage} />
                   <Route path="/crash-reports" component={CrashReportsPage} />
-              <Route path="/accident-leads" component={AccidentLeadsPage} />
+                  <Route path="/accident-leads" component={AccidentLeadsPage} />
                   <Route path="/property-radar" component={PropertyRadarPage} />
+                  <Route path="/service" component={ServiceBusinessDashboard} />
+                  <Route path="/insurance/intelligence" component={InsuranceIntelligence} />
+                  <Route path="/insurance/executor" component={InsuranceOpportunityExecutor} />
                   <Route path="/website-integration" component={WebsiteIntegration} />
                   <Route path="/form-builder" component={FormBuilder} />
                   <Route path="/analytics" component={AnalyticsPage} />
