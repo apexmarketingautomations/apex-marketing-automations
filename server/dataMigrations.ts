@@ -1292,6 +1292,38 @@ const MIGRATIONS: DataMigration[] = [
         AND  address ~* '\\m(I-\\d+|US-\\d+|SR-\\d+|CR-\\d+|FL-\\d+|MM\\s*\\d+|INTERSTATE|HIGHWAY|HWY)\\M';
     `,
   },
+  {
+    name: "2026-05-19-reset-crash-type-names-to-placeholder",
+    sql: `
+      -- Reset contacts whose first_name contains a crash-type descriptor or
+      -- FLHSMV non-person string rather than a real human name.
+      -- These were created when the crash ingest pipeline accepted BatchData
+      -- names from highway-address lookups (nearby residents/businesses)
+      -- or when FLHSMV returned a non-person identifier.
+      -- Fix: revert them to the standard placeholder so the FLHSMV enrichment
+      -- worker can overwrite with the real driver name on next run.
+      UPDATE contacts
+      SET    first_name      = 'Unidentified Crash Incident',
+             last_name       = CONCAT('— ', UPPER(COALESCE(NULLIF(county, ''), 'UNKNOWN'))),
+             is_placeholder  = TRUE,
+             view_class      = 'placeholder',
+             identity_status = 'placeholder'
+      WHERE  source = 'crash'
+        AND  (
+               first_name ~* '^(unknown|no name|n/a|none|null)$'
+            OR first_name ~* '^(driver|occupant|passenger|witness|pedestrian|bicyclist|motorcyclist)\\s*\\d*$'
+            OR first_name ~* '^(driver\\s+deceased|deceased\\s+driver|unlicensed\\s+driver|no\\s+valid\\s+(dl|license))$'
+            OR first_name ~* '^(commercial|company|government)\\s+vehicle'
+            OR first_name ~* '^(injury|fatal|property\\s+damage|hit\\s+and\\s+run|rear.?end|rollover|head.?on)\\s+(crash|accident|collision)$'
+            OR first_name ~* '^(injury|fatal|minor)\\s+crash$'
+            OR first_name ~* '^traffic\\s+(crash|incident|stop)$'
+            OR first_name ~* '^test\\b'
+            OR first_name ~* '^(john|jane)\\s+doe$'
+        )
+        AND  phone IS NULL
+        AND  email IS NULL;
+    `,
+  },
 ];
 
 export async function runDataMigrations(): Promise<void> {

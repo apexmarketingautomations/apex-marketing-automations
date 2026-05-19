@@ -250,11 +250,12 @@ async function createLeadFromCrash(
         );
         enrichmentCompletedAt = new Date();
 
-        if (traceResult.ownerName && !isPlaceholderName(traceResult.ownerName)) {
-          const parts = traceResult.ownerName.trim().split(" ");
-          firstName = parts[0] || firstName;
-          lastName = parts.slice(1).join(" ") || lastName;
-        }
+        // NOTE: We intentionally do NOT update firstName/lastName from the BatchData
+        // result at ingest time. At this stage we only have the CAD dispatch address
+        // (a highway crash scene), so any "person found" is someone who lives nearby —
+        // NOT the crash victim. Names are recovered later by the FLHSMV enrichment
+        // worker (crashReportWorker.ts) which reads the official report.
+        // Only phone/email are safe to use here (if BatchData somehow returns them).
         if (traceResult.ownerPhone) phone = traceResult.ownerPhone;
         if (traceResult.ownerEmail) email = traceResult.ownerEmail;
 

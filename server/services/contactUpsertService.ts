@@ -184,13 +184,48 @@ export function normalizeEmail(raw: string | null | undefined): string | null {
 }
 
 const PLACEHOLDER_PATTERNS = [
+  // Internal platform placeholder names
   /^crash lead$/i,
   /^unidentified/i,
-  /^unknown$/i,
-  /^vehicle crash$/i,
   /^incident lead$/i,
   /^legal lead$/i,
   /^booking lead$/i,
+  /^vehicle crash$/i,
+
+  // Generic "unknown" variants
+  /^unknown$/i,
+  /^unknown\s+(driver|operator|person|victim|subject|male|female|individual)/i,
+  /^no\s+(name|id|info|record)/i,
+  /^n\/?a$/i,
+  /^none$/i,
+  /^null$/i,
+
+  // FLHSMV / government report non-person strings
+  /^driver\s+\d+$/i,           // "DRIVER 1", "DRIVER 2"
+  /^occupant\s+\d+$/i,         // "OCCUPANT 1"
+  /^witness\s+\d*$/i,          // "WITNESS", "WITNESS 1"
+  /^pedestrian$/i,
+  /^pedestrian\s+\d*$/i,       // "PEDESTRIAN 1"
+  /^bicyclist$/i,
+  /^motorcyclist$/i,
+  /^passenger\s+\d*$/i,
+  /^driver\s+deceased$/i,
+  /^deceased\s+driver$/i,
+  /^unlicensed\s+driver$/i,
+  /^no\s+valid\s+dl$/i,
+  /^no\s+valid\s+license$/i,
+  /^commercial\s+vehicle/i,
+  /^company\s+vehicle/i,
+  /^government\s+vehicle/i,
+
+  // Crash/incident type strings that can leak from CAD feeds
+  /^(injury|fatal|property damage|hit and run|rear.?end|rollover|head.?on|side.?swipe)\s+(crash|accident|collision)$/i,
+  /^crash\s+(type|incident|report|lead)$/i,
+  /^(injury|fatal|minor)\s+crash$/i,
+  /^traffic\s+(crash|incident|stop)$/i,
+  /^test\b/i,                  // "Test", "Test User", "Test Vehicle"
+  /^john\s+doe$/i,
+  /^jane\s+doe$/i,
 ];
 
 export function isPlaceholderName(name: string | null | undefined): boolean {
