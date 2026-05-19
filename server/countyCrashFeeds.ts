@@ -41,7 +41,6 @@
 
 import axios from "axios";
 import type { SentinelIncidentRaw } from "./sentinel";
-import { logSystemEvent } from "./systemLogger";
 
 // Hard county allowlist — anything outside SWFL is dropped at intake.
 export const COUNTY_CRASH_SCOPE = ["LEE", "COLLIER", "CHARLOTTE"] as const;
@@ -66,13 +65,13 @@ const HIGH_SEVERITY_PATTERNS = [
   "PEDESTRIAN", "BICYCLE", "MOTORCYCLE", "SIGNAL 4", "EJECT",
 ];
 
-function isCrashNature(nature: string | null | undefined): boolean {
+export function isCrashNature(nature: string | null | undefined): boolean {
   if (!nature) return false;
   const upper = nature.toUpperCase();
   return CRASH_NATURE_PATTERNS.some((kw) => upper.includes(kw));
 }
 
-function deriveSeverity(nature: string, remarks: string): "high" | "medium" {
+export function deriveSeverity(nature: string, remarks: string): "high" | "medium" {
   const blob = `${nature} ${remarks}`.toUpperCase();
   return HIGH_SEVERITY_PATTERNS.some((kw) => blob.includes(kw)) ? "high" : "medium";
 }
@@ -159,7 +158,8 @@ async function fetchLeeTrafficSnapshot(): Promise<{ rows: LeeTrafficRecord[]; et
     return { rows: [], status };
   }
 
-  const rows = Array.isArray(resp.data) ? resp.data : [];
+  // Defensive cap: if the upstream ever emits a huge payload, don't blow memory.
+  const rows = Array.isArray(resp.data) ? resp.data.slice(0, 2000) : [];
   const etag = typeof resp.headers?.etag === "string" ? resp.headers.etag : undefined;
   return { rows, etag, status };
 }
@@ -233,12 +233,16 @@ export async function fetchLeeCrashFeed(): Promise<SentinelIncidentRaw[]> {
     }
 
     console.warn(`[COUNTY-CRASH] LEE feed failed (non-fatal): ${status ? `HTTP ${status}` : msg}`);
-    logSystemEvent("warn", "county-crash", "LEE traffic feed failed", {
-      status: status ?? null,
-      consecutiveFailures: leeCache.consecutiveFailures,
-      circuitOpenUntil: leeCache.circuitOpenUntil ? new Date(leeCache.circuitOpenUntil).toISOString() : null,
-      message: msg.slice(0, 200),
-    }).catch(() => {});
+    import("./systemLogger")
+      .then(({ logSystemEvent }) =>
+        logSystemEvent("warn", "county-crash", "LEE traffic feed failed", {
+          status: status ?? null,
+          consecutiveFailures: leeCache.consecutiveFailures,
+          circuitOpenUntil: leeCache.circuitOpenUntil ? new Date(leeCache.circuitOpenUntil).toISOString() : null,
+          message: msg.slice(0, 200),
+        }),
+      )
+      .catch(() => {});
 
     // Prefer last known snapshot over an empty feed.
     const cached = leeCache.lastRows ?? [];
@@ -246,10 +250,12 @@ export async function fetchLeeCrashFeed(): Promise<SentinelIncidentRaw[]> {
   }
 }
 
-function mapLeeRowsToIncidents(rows: LeeTrafficRecord[]): SentinelIncidentRaw[] {
+export function mapLeeRowsToIncidents(rows: LeeTrafficRecord[]): SentinelIncidentRaw[] {
   const incidents: SentinelIncidentRaw[] = [];
   for (const r of rows) {
-    if (!r || !r.id || !isCrashNature(r.nature)) continue;
+    const id = (r as any)?.id !== undefined && (r as any)?.id !== null ? String((r as any).id).trim() : "";
+    const nature = ((r as any)?.nature ?? "") as string;
+    if (!id || !isCrashNature(nature)) continue;
 
     const address = (r.address || "").trim();
     const city = (r.city || "").trim();
@@ -257,11 +263,12 @@ function mapLeeRowsToIncidents(rows: LeeTrafficRecord[]): SentinelIncidentRaw[] 
 
     // Match the FHP location convention: "<address> [<city>], LEE County, FL"
     const location = `${address}${city ? ` [${city}]` : ""}, LEE County, FL`;
-    const severity = deriveSeverity(r.nature || "", r.remarks || "");
+    const remarks = ((r as any)?.remarks ?? "") as string;
+    const severity = deriveSeverity(nature || "", remarks || "");
 
     incidents.push({
-      id: r.id,
-      type: r.nature || "CRASH",
+      id,
+      type: nature || "CRASH",
       location,
       lat: null,
       lng: null,
@@ -270,8 +277,8 @@ function mapLeeRowsToIncidents(rows: LeeTrafficRecord[]): SentinelIncidentRaw[] 
       source: "lcso_cad",
       state: "FL",
       county: "LEE",
-      remarks: r.remarks || "",
-      received: r.date || "",
+      remarks: remarks || "",
+      received: typeof (r as any)?.date === "string" ? (r as any).date.trim() : "",
     });
   }
   return incidents;
