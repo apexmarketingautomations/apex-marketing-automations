@@ -1304,13 +1304,19 @@ const MIGRATIONS: DataMigration[] = [
       -- worker can overwrite with the real driver name on next run.
       UPDATE contacts
       SET    first_name      = 'Unidentified Crash Incident',
-             last_name       = CONCAT('— ', UPPER(COALESCE(NULLIF(county, ''), 'UNKNOWN'))),
+             last_name       = CASE
+               -- last_name often carries "COUNTY — crash type" — keep just the county prefix
+               WHEN last_name ~ ' — '
+                 THEN CONCAT('— ', SPLIT_PART(last_name, ' — ', 1))
+               ELSE CONCAT('— ', UPPER(COALESCE(NULLIF(county, ''), 'UNKNOWN')))
+             END,
              is_placeholder  = TRUE,
              view_class      = 'placeholder',
              identity_status = 'placeholder'
-      WHERE  source = 'crash'
+      WHERE  source IN ('crash', 'sentinel_crash', 'crash_lead')
         AND  (
-               first_name ~* '^(unknown|no name|n/a|none|null)$'
+               first_name ~* '^crash lead$'
+            OR first_name ~* '^(unknown|no name|n/a|none|null)$'
             OR first_name ~* '^(driver|occupant|passenger|witness|pedestrian|bicyclist|motorcyclist)\\s*\\d*$'
             OR first_name ~* '^(driver\\s+deceased|deceased\\s+driver|unlicensed\\s+driver|no\\s+valid\\s+(dl|license))$'
             OR first_name ~* '^(commercial|company|government)\\s+vehicle'
@@ -1320,8 +1326,8 @@ const MIGRATIONS: DataMigration[] = [
             OR first_name ~* '^test\\b'
             OR first_name ~* '^(john|jane)\\s+doe$'
         )
-        AND  phone IS NULL
-        AND  email IS NULL;
+        AND  COALESCE(NULLIF(phone, ''), NULL) IS NULL
+        AND  COALESCE(NULLIF(email, ''), NULL) IS NULL;
     `,
   },
 ];
