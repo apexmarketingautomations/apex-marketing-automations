@@ -23,11 +23,11 @@ export function HomeHeroScene({ reducedMotion, scrollProgress, accent }: Props) 
   const accentColor = useMemo(() => new THREE.Color(accent), [accent]);
   const ringMat = useMemo(() => {
     const m = new THREE.MeshStandardMaterial({
-      color: new THREE.Color("#0b1020"),
+      color: new THREE.Color("#070a12"),
       emissive: accentColor,
-      emissiveIntensity: 0.85,
+      emissiveIntensity: 0.55,
       metalness: 0.7,
-      roughness: 0.25,
+      roughness: 0.28,
     });
     return m;
   }, [accentColor]);
@@ -64,8 +64,8 @@ export function HomeHeroScene({ reducedMotion, scrollProgress, accent }: Props) 
 
       <fog attach="fog" args={["#030014", 6, 18]} />
 
-      <ambientLight intensity={0.25} />
-      <directionalLight position={[4, 6, 3]} intensity={1.15} color={"#e8edff"} />
+      <ambientLight intensity={0.22} />
+      <directionalLight position={[4, 6, 3]} intensity={1.05} color={"#ffffff"} />
       <pointLight position={[-3, 1.5, 2]} intensity={0.9} color={accent} />
 
       <Environment preset={lowQuality ? "city" : "night"} />
@@ -78,7 +78,7 @@ export function HomeHeroScene({ reducedMotion, scrollProgress, accent }: Props) 
           sectionSize={3.6}
           sectionThickness={1.15}
           sectionColor={accent}
-          cellColor={"#1d2440"}
+          cellColor={"#141826"}
           fadeDistance={14}
           fadeStrength={2}
         />
@@ -100,9 +100,9 @@ export function HomeHeroScene({ reducedMotion, scrollProgress, accent }: Props) 
       <mesh position={[0, 0.25, 0]} rotation={[0.15, -0.25, 0]} >
         <torusGeometry args={[1.75, 0.02, 16, 280]} />
         <meshStandardMaterial
-          color={"#0a0f1f"}
+          color={"#070a12"}
           emissive={accentColor}
-          emissiveIntensity={0.55}
+          emissiveIntensity={0.32}
           metalness={0.85}
           roughness={0.35}
           transparent
@@ -112,11 +112,10 @@ export function HomeHeroScene({ reducedMotion, scrollProgress, accent }: Props) 
 
       {!lowQuality && (
         <EffectComposer multisampling={0}>
-          <Bloom intensity={0.9} luminanceThreshold={0.25} luminanceSmoothing={0.6} />
+          <Bloom intensity={0.55} luminanceThreshold={0.3} luminanceSmoothing={0.7} />
           <Vignette eskil={false} offset={0.15} darkness={0.7} />
         </EffectComposer>
       )}
     </>
   );
 }
-

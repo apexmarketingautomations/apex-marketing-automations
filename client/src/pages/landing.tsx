@@ -243,7 +243,7 @@ export default function LandingPage() {
       {/* Hero */}
       <section className="relative pt-24 md:pt-28 min-h-[92vh] flex items-stretch">
         <div className="absolute inset-0 pointer-events-none">
-          <HomeHero3D className="absolute inset-0" accent="#7c3aed" />
+          <HomeHero3D className="absolute inset-0" accent="#ffffff" />
           <div className="absolute inset-0 bg-gradient-to-b from-black/15 via-black/30 to-[#030014]" />
         </div>
 
