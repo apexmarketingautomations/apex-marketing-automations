@@ -88,6 +88,24 @@ app.use(
     },
   })
 );
+
+const voiceBrowserCsp = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:",
+  "style-src 'self' 'unsafe-inline' https:",
+  "img-src 'self' data: https:",
+  "connect-src 'self' https: wss:",
+  "media-src 'self' blob: data: https:",
+  "worker-src 'self' blob:",
+  "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://*.daily.co https://*.vapi.ai",
+  "frame-ancestors 'self' https://*.replit.dev https://*.repl.co https://replit.com",
+].join("; ");
+
+app.use(["/kiosk/frontdesk", "/frontdesk", "/voice-agent"], (_req, res, next) => {
+  res.setHeader("Content-Security-Policy", voiceBrowserCsp);
+  next();
+});
+
 const httpServer = createServer(app);
 
 declare module "http" {
