@@ -93,8 +93,10 @@ export async function scanCountyDate(
   crashDate: string,
   subAccountId: number,
   dryRun = false,
+  toCrashDate?: string,
 ): Promise<DirectScanStats> {
-  const stats: DirectScanStats = { county, date: crashDate, fetched: 0, created: 0, alreadyExists: 0, failed: 0 };
+  const dateLabel = toCrashDate ? `${crashDate}→${toCrashDate}` : crashDate;
+  const stats: DirectScanStats = { county, date: dateLabel, fetched: 0, created: 0, alreadyExists: 0, failed: 0 };
 
   let searchData: any[];
   try {
@@ -103,11 +105,23 @@ export async function scanCountyDate(
       headers: {
         "Content-Type": "application/json",
         "Accept": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
         "Origin": FLHSMV_BASE,
         "Referer": `${FLHSMV_BASE}/crashreportrequest/`,
       },
-      body: JSON.stringify({ County: county.toUpperCase(), CrashDate: crashDate }),
+      body: JSON.stringify({
+        County: county.toUpperCase(),
+        CrashDate: crashDate,
+        ToCrashDate: toCrashDate ?? null,
+        City: null,
+        CrashStreet: null,
+        ReportNumber: null,
+        ReportSection: null,
+        AtFaultDriverLastName: null,
+        AtFaultDriverFirstName: null,
+        VehicleVIN: null,
+      }),
       signal: AbortSignal.timeout(30_000),
     });
 
@@ -120,12 +134,17 @@ export async function scanCountyDate(
     const json = await resp.json();
     searchData = Array.isArray(json) ? json : (json?.ReportNumber ? [json] : []);
   } catch (err: any) {
-    console.warn(`[DIRECT-SCAN] Network error for ${county}/${crashDate}: ${err.message}`);
+    console.warn(`[DIRECT-SCAN] Network error for ${county}/${dateLabel}: ${err.message}`);
     stats.failed++;
     return stats;
   }
 
   stats.fetched = searchData.length;
+
+  // FLHSMV caps results at 10 per query — if we hit exactly 10, there may be more we missed
+  if (searchData.length === 10) {
+    console.warn(`[DIRECT-SCAN] ⚠ ${county}/${dateLabel}: got exactly 10 results — FLHSMV may have truncated. Consider narrowing date range.`);
+  }
 
   for (const result of searchData) {
     const officialReportNumber: string | undefined = result?.ReportNumber;
@@ -183,7 +202,7 @@ export async function scanCountyDate(
   }
 
   console.log(
-    `[DIRECT-SCAN] ${county}/${crashDate}: fetched=${stats.fetched} ` +
+    `[DIRECT-SCAN] ${county}/${dateLabel}: fetched=${stats.fetched} ` +
     `created=${stats.created} exists=${stats.alreadyExists} failed=${stats.failed}${dryRun ? " [DRY RUN]" : ""}`,
   );
   return stats;
@@ -232,18 +251,31 @@ export async function runDirectScan(options: {
   let totalFailed = 0;
 
   for (const county of counties) {
-    for (let d = 0; d < daysBack; d++) {
-      const date = new Date(Date.now() - d * 86_400_000);
-      const crashDate = date.toISOString().split("T")[0]; // YYYY-MM-DD
+    const toDate   = new Date(Date.now()).toISOString().split("T")[0];
+    const fromDate = new Date(Date.now() - (daysBack - 1) * 86_400_000).toISOString().split("T")[0];
 
-      const s = await scanCountyDate(county, crashDate, subAccountId, dryRun);
-      byCountyDate.push(s);
-      totalFetched      += s.fetched;
-      totalCreated      += s.created;
-      totalAlreadyExists += s.alreadyExists;
-      totalFailed       += s.failed;
+    // First: try one range call covering all days (saves ~13x ScrapingBee credits vs day-by-day)
+    const rangeStats = await scanCountyDate(county, fromDate, subAccountId, dryRun, toDate);
+    byCountyDate.push(rangeStats);
+    totalFetched      += rangeStats.fetched;
+    totalCreated      += rangeStats.created;
+    totalAlreadyExists += rangeStats.alreadyExists;
+    totalFailed       += rangeStats.failed;
 
-      // Polite pause between requests — don't hammer FLHSMV
+    // If we got exactly 10 results, FLHSMV truncated — fall back to day-by-day to catch overflow
+    if (rangeStats.fetched === 10) {
+      console.warn(`[DIRECT-SCAN] ${county} range hit 10-result cap — falling back to day-by-day scan`);
+      for (let d = 0; d < daysBack; d++) {
+        const date = new Date(Date.now() - d * 86_400_000).toISOString().split("T")[0];
+        const s = await scanCountyDate(county, date, subAccountId, dryRun);
+        byCountyDate.push(s);
+        totalFetched      += s.fetched;
+        totalCreated      += s.created;
+        totalAlreadyExists += s.alreadyExists;
+        totalFailed       += s.failed;
+        await new Promise(r => setTimeout(r, 400));
+      }
+    } else {
       await new Promise(r => setTimeout(r, 400));
     }
   }
