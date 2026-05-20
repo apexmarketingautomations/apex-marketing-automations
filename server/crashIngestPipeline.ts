@@ -50,8 +50,8 @@ const LEAD_QUALIFYING_TYPES = [
   "MOTORCYCLE", "SIGNAL 4", "SIGNAL4", "CRITICAL",
 ];
 
-// Only HIGH and CRITICAL severity crashes become leads for injury attorneys
-const QUALIFYING_SEVERITIES = new Set(["critical", "high"]);
+// All severities qualify — every crash is a potential lead.
+const QUALIFYING_SEVERITIES = new Set(["critical", "high", "medium", "low"]);
 
 // Giovanni's account gets all injury leads
 const GIOVANNI_ACCOUNT_ID = 4;   // Crash Connect — Giovanni (actual DB id)
@@ -136,10 +136,7 @@ function recordCycle(cycle: PollCycleSummary): void {
 }
 
 function isQualifyingCrash(incident: SentinelIncidentRaw): boolean {
-  const upper = incident.type.toUpperCase();
-  const typeMatch = LEAD_QUALIFYING_TYPES.some(kw => upper.includes(kw));
-  const severityMatch = QUALIFYING_SEVERITIES.has(incident.severity?.toLowerCase() || "");
-  return typeMatch && severityMatch;
+  return true;
 }
 
 // Cache active accounts for 5 minutes to avoid DB spam

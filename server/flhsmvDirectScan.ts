@@ -41,7 +41,9 @@ import { nimblePipelineFetch, isNimbleConfigured } from "./nimbleClient";
 
 const FLHSMV_BASE = "https://services.flhsmv.gov";
 const FLHSMV_SEARCH_URL = `${FLHSMV_BASE}/CRRService/api/CrashReport/SearchReport`;
-export const FLHSMV_PORTAL_URL = `${FLHSMV_BASE}/crashreportrequest/`;
+// The full crashreportrequest/ page crashes ScrapingBee's renderer (error 613).
+// The root is simpler — if it sets ASP.NET_SessionId, it's shared across the domain.
+export const FLHSMV_PORTAL_URL = `${FLHSMV_BASE}/`;
 
 // ── Session state ─────────────────────────────────────────────────────────────
 // Single-flight: only one warm-up runs at a time; concurrent callers await it.
