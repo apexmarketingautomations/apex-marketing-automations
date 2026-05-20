@@ -577,6 +577,15 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
         return;
       }
 
+      const isoDate = /^\d{4}-\d{2}-\d{2}$/.test(crashDate)
+        ? crashDate
+        : crashDate.replace(/^(\d{2})\/(\d{2})\/(\d{4})$/, "$3-$1-$2");
+      const daysOld = (Date.now() - new Date(isoDate).getTime()) / 86_400_000;
+      if (daysOld < 10) {
+        console.log(`[CRASH-WORKER] Follow-up ${reportNumber} too recent (${daysOld.toFixed(1)}d old) — deferring, FLHSMV 10-day filing window not closed`);
+        return;
+      }
+
       const lat      = meta?.lat      as number | null | undefined;
       const lng      = meta?.lng      as number | null | undefined;
       const received = meta?.received as string | null | undefined;
