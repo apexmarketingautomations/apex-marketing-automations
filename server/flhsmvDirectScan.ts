@@ -36,9 +36,34 @@ import crypto from "crypto";
 import { db } from "./db";
 import { crashReports } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { scrapingBeeFetch } from "./scrapingBeeClient";
+import { scrapingBeeFetch, proxiedFetch } from "./scrapingBeeClient";
 
 const FLHSMV_BASE = "https://services.flhsmv.gov";
+const FLHSMV_SEARCH_URL = `${FLHSMV_BASE}/CRRService/api/CrashReport/SearchReport`;
+const FLHSMV_PORTAL_URL = `${FLHSMV_BASE}/crashreportrequest/`;
+
+// Cache portal session cookies — re-fetch after 20 minutes
+let _portalCookies = "";
+let _portalCookiesFetchedAt = 0;
+const PORTAL_COOKIE_TTL_MS = 20 * 60 * 1000;
+
+async function getPortalCookies(): Promise<string> {
+  const now = Date.now();
+  if (_portalCookies && (now - _portalCookiesFetchedAt) < PORTAL_COOKIE_TTL_MS) {
+    return _portalCookies;
+  }
+  const result = await scrapingBeeFetch({
+    url: FLHSMV_PORTAL_URL,
+    renderJs: false,
+    countryCode: "us",
+    jsonResponse: true,
+  });
+  const cookies = (result.cookies ?? []).map((c: any) => `${c.name}=${c.value}`).join("; ");
+  _portalCookies = cookies;
+  _portalCookiesFetchedAt = now;
+  console.log(`[DIRECT-SCAN] Portal session cookies captured (${(result.cookies ?? []).length} cookies)`);
+  return cookies;
+}
 
 // SWFL personal-injury target counties — all FL agencies in these counties file with FLHSMV
 const SCAN_COUNTIES = ["LEE", "COLLIER", "CHARLOTTE", "SARASOTA", "MANATEE"];
@@ -96,9 +121,6 @@ export async function scanCountyDate(
 
   let searchData: any[];
   try {
-    // SearchReport requires a session cookie set by the portal page — a direct POST
-    // returns 401. Load the portal in ScrapingBee's JS renderer and fire the XHR
-    // from inside that page context so same-origin cookies are included automatically.
     const payload = {
       County: county.toUpperCase(),
       CrashDate: crashDate,
@@ -107,54 +129,33 @@ export async function scanCountyDate(
       ReportSection: null, AtFaultDriverLastName: null,
       AtFaultDriverFirstName: null, VehicleVIN: null,
     };
-    const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64");
+    // Step 1: grab session cookies from the portal (no JS render — avoids renderer 500s)
+    const cookieHeader = await getPortalCookies();
 
-    // Fire the SearchReport XHR from within the portal page context so that
-    // session cookies set by the portal are included automatically.
-    // json_response=true lets ScrapingBee intercept and return the XHR response directly.
-    const jsSnippet = Buffer.from(`
-      fetch('/CRRService/api/CrashReport/SearchReport', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-        body: atob('${payloadB64}'),
-      });
-    `).toString("base64");
+    // Step 2: direct POST to SearchReport with those cookies — no headless browser needed
+    const resp = await proxiedFetch(FLHSMV_SEARCH_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        "Origin": FLHSMV_BASE,
+        "Referer": FLHSMV_PORTAL_URL,
+        ...(cookieHeader ? { "Cookie": cookieHeader } : {}),
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30_000),
+    }, { renderJs: false, countryCode: "us" });
 
-    const rendered = await scrapingBeeFetch({
-      url: `${FLHSMV_BASE}/crashreportrequest/`,
-      renderJs: true,
-      countryCode: "us",
-      jsSnippet,
-      waitMs: 8000,
-      jsonResponse: true,
-    });
-
-    if (!rendered.ok) {
-      console.warn(`[DIRECT-SCAN] ScrapingBee error ${rendered.status} for ${county}/${dateLabel}`);
+    if (!resp.ok) {
+      // If we get 401 the cookies have expired — bust the cache so next call re-fetches
+      if (resp.status === 401) _portalCookiesFetchedAt = 0;
+      console.warn(`[DIRECT-SCAN] FLHSMV returned HTTP ${resp.status} for ${county}/${dateLabel}`);
       stats.failed++;
       return stats;
     }
 
-    // Find the SearchReport XHR response in the captured network calls
-    const searchXhr = rendered.xhr?.find(x =>
-      x.url.includes("SearchReport") || x.url.includes("CrashReport"),
-    );
-    if (!searchXhr) {
-      console.warn(`[DIRECT-SCAN] SearchReport XHR not captured for ${county}/${dateLabel}`);
-      stats.failed++;
-      return stats;
-    }
-    if (searchXhr.status >= 400) {
-      console.warn(`[DIRECT-SCAN] FLHSMV SearchReport returned HTTP ${searchXhr.status} for ${county}/${dateLabel}`);
-      stats.failed++;
-      return stats;
-    }
-
-    const json = JSON.parse(searchXhr.response);
+    const json = await resp.json();
     searchData = Array.isArray(json) ? json : (json?.ReportNumber ? [json] : []);
   } catch (err: any) {
     console.warn(`[DIRECT-SCAN] Error for ${county}/${dateLabel}: ${err.message}`);
