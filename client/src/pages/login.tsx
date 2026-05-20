@@ -30,6 +30,7 @@ export default function Login() {
   const idleLogout = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("reason") === "idle";
   const returnTo = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("returnTo") : null;
   const safeReturnTo = returnTo && /^\/[a-zA-Z0-9\-_/?&=.%]*$/.test(returnTo) && !returnTo.startsWith("//") ? returnTo : "/";
+  const isDev = (import.meta as any).env?.DEV === true || (typeof window !== "undefined" && /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname));
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -309,16 +310,26 @@ export default function Login() {
               Continue with Firebase
             </button>
 
-            <a
-              href="/api/login"
-              className="mt-3 w-full py-3 border border-blue-500/20 bg-blue-500/5 hover:bg-blue-500/10 text-blue-300 font-medium rounded-xl transition-all flex items-center justify-center gap-2 text-sm"
-              data-testid="button-replit-login"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 32 32" fill="currentColor">
-                <path d="M7 5.5C7 4.672 7.672 4 8.5 4h7.628c.456 0 .872.263 1.066.675l5.74 12.175a1 1 0 0 1 0 .85L17.194 29.825a1.166 1.166 0 0 1-1.066.675H8.5A1.5 1.5 0 0 1 7 29V5.5z"/>
-              </svg>
-              Continue with Replit
-            </a>
+            {isDev ? (
+              <a
+                href="/api/auth/dev-admin-login"
+                className="mt-3 w-full py-3 border border-emerald-500/25 bg-emerald-500/10 hover:bg-emerald-500/15 text-emerald-200 font-medium rounded-xl transition-all flex items-center justify-center gap-2 text-sm"
+                data-testid="button-dev-admin-login"
+              >
+                Dev Admin Login
+              </a>
+            ) : (
+              <a
+                href="/api/login"
+                className="mt-3 w-full py-3 border border-blue-500/20 bg-blue-500/5 hover:bg-blue-500/10 text-blue-300 font-medium rounded-xl transition-all flex items-center justify-center gap-2 text-sm"
+                data-testid="button-replit-login"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 32 32" fill="currentColor">
+                  <path d="M7 5.5C7 4.672 7.672 4 8.5 4h7.628c.456 0 .872.263 1.066.675l5.74 12.175a1 1 0 0 1 0 .85L17.194 29.825a1.166 1.166 0 0 1-1.066.675H8.5A1.5 1.5 0 0 1 7 29V5.5z"/>
+                </svg>
+                Continue with Replit
+              </a>
+            )}
 
             <div className="mt-5 text-center">
               <button
