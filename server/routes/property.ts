@@ -1587,8 +1587,13 @@ export function registerPropertyRoutes(app: Express) {
 
     if (result.type === "success") {
       const safeName = String(officialReportNumber).replace(/[^A-Z0-9._-]/gi, "_");
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="police-report-${safeName}.pdf"`);
+      if (result.isZip) {
+        res.setHeader("Content-Type", "application/zip");
+        res.setHeader("Content-Disposition", `attachment; filename="police-report-${safeName}.zip"`);
+      } else {
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="police-report-${safeName}.pdf"`);
+      }
       res.setHeader("Cache-Control", "private, no-store");
       return res.send(result.buffer);
     }

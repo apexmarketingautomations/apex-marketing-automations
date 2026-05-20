@@ -531,7 +531,7 @@ const FLHSMV_PDF_CANDIDATES = [
 ];
 
 export type FetchPDFResult =
-  | { type: "success"; buffer: Buffer; url: string }
+  | { type: "success"; buffer: Buffer; url: string; isZip?: boolean }
   | { type: "not_found" }
   | { type: "error"; message: string };
 
@@ -546,12 +546,13 @@ export async function fetchReportPDF(officialReportNumber: string): Promise<Fetc
       const response = await fetchWithRetry(url, { method: "GET", headers });
       if (!response.ok) continue;
       const ct = response.headers.get("content-type") ?? "";
-      if (ct.includes("pdf") || ct.includes("octet-stream")) {
+      if (ct.includes("pdf") || ct.includes("octet-stream") || ct.includes("zip")) {
         const ab = await response.arrayBuffer();
-        console.log(`[CRASH-WORKER] ✓ PDF fetched for ${officialReportNumber} via ${url}`);
-        return { type: "success", buffer: Buffer.from(ab), url };
+        const isZip = ct.includes("zip") || (ab.byteLength > 4 && Buffer.from(ab).slice(0,2).toString("hex") === "504b");
+        console.log(`[CRASH-WORKER] ✓ Report fetched for ${officialReportNumber} via ${url} (${isZip ? "ZIP" : "PDF"}, ${ab.byteLength} bytes)`);
+        return { type: "success", buffer: Buffer.from(ab), url, isZip };
       }
-      // Some endpoints return 200 with HTML error pages — not a real PDF
+      // Some endpoints return 200 with HTML error pages — not a real file
       console.log(`[CRASH-WORKER] PDF probe ${url} → 200 but content-type=${ct}, skipping`);
     } catch (err: any) {
       console.log(`[CRASH-WORKER] PDF probe ${url} failed: ${err.message}`);
