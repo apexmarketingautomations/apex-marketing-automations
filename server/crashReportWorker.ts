@@ -384,10 +384,15 @@ async function searchReportByCountyDate(
   try {
     await refreshSession();
 
+    // FLHSMV expects YYYY-MM-DD. Sentinel stores dates as MM/DD/YYYY; normalize defensively.
+    const isoDate = /^\d{4}-\d{2}-\d{2}$/.test(crashDate)
+      ? crashDate
+      : crashDate.replace(/^(\d{2})\/(\d{2})\/(\d{4})$/, "$3-$1-$2");
+
     const response = await fetchWithRetry(FLHSMV_SEARCH_URL, {
       method: "POST",
       headers: getHeaders(),
-      body: JSON.stringify({ County: county.toUpperCase(), CrashDate: crashDate }),
+      body: JSON.stringify({ County: county.toUpperCase(), CrashDate: isoDate }),
     });
 
     if (!response.ok) {

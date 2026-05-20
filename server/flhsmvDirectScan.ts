@@ -37,6 +37,7 @@ import { db } from "./db";
 import { crashReports } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { proxiedFetch, scrapingBeeFetch } from "./scrapingBeeClient";
+import { nimblePipelineFetch, isNimbleConfigured } from "./nimbleClient";
 
 const FLHSMV_BASE = "https://services.flhsmv.gov";
 const FLHSMV_SEARCH_URL = `${FLHSMV_BASE}/CRRService/api/CrashReport/SearchReport`;
@@ -66,25 +67,50 @@ export function isSessionOnCooldown(): { cooldown: boolean; remainingMs: number 
 }
 
 async function doFetchPortalCookies(): Promise<string> {
-  // json_response=true is the only way to get cookies through ScrapingBee;
-  // proxiedFetch absorbs Set-Cookie headers internally.
-  // Attempt A: renderJs=false (server-side cookies only — cheap)
-  // Attempt B: renderJs=true (lets FLHSMV JS run to set cookie — expensive, may 500)
-  // ScrapingBee error 613 = Akamai bot-kill on standard/premium renderer.
-  // Stealth proxy (75 credits) is the only tier designed to survive Akamai.
+  // Strategy: Nimble first (it handles Akamai-protected FL government sites),
+  // then ScrapingBee stealth as fallback.
+  // ScrapingBee error 613 = Akamai kills standard/premium renderer on FLHSMV.
+
+  // ── Nimble attempt ──────────────────────────────────────────────────────────
+  if (isNimbleConfigured()) {
+    console.log("[FLHSMV-SESSION] warm-up attempt 1 — provider=nimble render=true wait=8000ms");
+    const nimbleResult = await nimblePipelineFetch({
+      url:     FLHSMV_PORTAL_URL,
+      render:  true,
+      waitMs:  8000,
+      country: "US",
+    });
+    console.log(
+      `[FLHSMV-SESSION] nimble result — status=${nimbleResult.status} ok=${nimbleResult.ok} ` +
+      `cookie_count=${(nimbleResult.cookies ?? []).length} ` +
+      `cookie_names=[${(nimbleResult.cookies ?? []).map((c: any) => c.name).join(", ")}]`,
+    );
+    if (nimbleResult.ok || nimbleResult.status < 500) {
+      const rawCookies = nimbleResult.cookies ?? [];
+      if (rawCookies.length > 0) {
+        const cookieHeader = rawCookies.map((c: any) => `${c.name}=${c.value}`).join("; ");
+        _portalCookies = cookieHeader;
+        _portalCookiesFetchedAt = Date.now();
+        _sessionCooldownUntil = 0;
+        return cookieHeader;
+      }
+    } else {
+      console.warn(`[FLHSMV-SESSION] Nimble failed — status=${nimbleResult.status} error=${nimbleResult.error ?? "unknown"}`);
+    }
+  }
+
+  // ── ScrapingBee fallback ─────────────────────────────────────────────────────
   const attempts = [
-    { renderJs: true,  blockResources: false, waitMs: 8000,      mode: "stealth"  as const },
-    { renderJs: true,  blockResources: false, waitMs: 12000,     mode: "stealth"  as const },
-    { renderJs: false, blockResources: false, waitMs: undefined,  mode: "premium"  as const },
+    { renderJs: true,  blockResources: false, waitMs: 8000  as number | undefined, mode: "stealth"  as const },
+    { renderJs: true,  blockResources: false, waitMs: 12000 as number | undefined, mode: "stealth"  as const },
+    { renderJs: false, blockResources: false, waitMs: undefined,                   mode: "premium"  as const },
   ];
 
   for (let i = 0; i < attempts.length; i++) {
     const opts = attempts[i];
     console.log(
-      `[FLHSMV-SESSION] warm-up attempt ${i + 1}/${attempts.length} — ` +
-      `mode=${opts.mode} ` +
-      `render_js=${opts.renderJs} block_resources=${opts.blockResources} ` +
-      `wait=${opts.waitMs ?? 0}ms json_response=true`,
+      `[FLHSMV-SESSION] warm-up attempt sb${i + 1}/${attempts.length} — ` +
+      `mode=${opts.mode} render_js=${opts.renderJs} wait=${opts.waitMs ?? 0}ms`,
     );
 
     const result = await scrapingBeeFetch({
@@ -98,19 +124,13 @@ async function doFetchPortalCookies(): Promise<string> {
     });
 
     console.log(
-      `[FLHSMV-SESSION] warm-up attempt ${i + 1} — ` +
-      `mode=${opts.mode} ` +
-      `status=${result.status} ok=${result.ok} ` +
-      `json_envelope_parsed=${!result.error} ` +
+      `[FLHSMV-SESSION] sb${i + 1} result — mode=${opts.mode} status=${result.status} ` +
       `cookie_count=${(result.cookies ?? []).length} ` +
       `cookie_names=[${(result.cookies ?? []).map((c: any) => c.name).join(", ")}]`,
     );
 
     if (result.status >= 500) {
-      console.warn(
-        `[FLHSMV-SESSION] ScrapingBee failure on attempt ${i + 1} ` +
-        `(mode=${opts.mode}) — status=${result.status} error=${result.error ?? "unknown"}`,
-      );
+      console.warn(`[FLHSMV-SESSION] ScrapingBee sb${i + 1} failed (mode=${opts.mode}) — ${result.error ?? "unknown"}`);
       _sessionCooldownUntil = Date.now() + SESSION_COOLDOWN_MS;
       continue;
     }

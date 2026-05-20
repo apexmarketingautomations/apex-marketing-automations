@@ -52,6 +52,8 @@ export interface NimblePipelineResult {
   ok: boolean;
   status: number;
   html: string;
+  /** Cookies captured during page render (only present when render=true) */
+  cookies?: Array<{ name: string; value: string; domain?: string; path?: string }>;
   error?: string;
 }
 
@@ -90,17 +92,26 @@ export async function nimblePipelineFetch(opts: NimblePipelineOptions): Promise<
       return { ok: false, status: res.status, html: text, error: `HTTP ${res.status}` };
     }
 
-    // Nimble returns { html: "...", status_code: 200, ... }
+    // Nimble returns { html: "...", status_code: 200, cookies: {...}, ... }
     let html = text;
     let statusCode = res.status;
+    let cookies: NimblePipelineResult["cookies"];
     try {
       const json = JSON.parse(text);
       html       = json.html ?? json.body ?? json.content ?? text;
       statusCode = json.status_code ?? res.status;
+      // Nimble returns cookies as an object { name: value } or an array
+      if (json.cookies) {
+        if (Array.isArray(json.cookies)) {
+          cookies = json.cookies;
+        } else if (typeof json.cookies === "object") {
+          cookies = Object.entries(json.cookies).map(([name, value]) => ({ name, value: String(value) }));
+        }
+      }
     } catch { // allow-silent-catch: JSON.parse fails when Nimble returns raw HTML — fall back to raw text which is already assigned
     }
 
-    return { ok: statusCode < 400, status: statusCode, html };
+    return { ok: statusCode < 400, status: statusCode, html, cookies };
   } catch (err: any) {
     console.error(`[NIMBLE] Pipeline fetch failed for ${opts.url}: ${err.message}`);
     return { ok: false, status: 0, html: "", error: err.message };
