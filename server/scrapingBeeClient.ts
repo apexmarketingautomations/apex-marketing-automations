@@ -55,6 +55,10 @@ export interface ScrapingBeeOptions {
   blockAds?: boolean;
   /** Block images to reduce data usage on JS renders. Default: false */
   blockResources?: boolean;
+  /** Base64-encoded JavaScript snippet to execute after page load (requires renderJs=true) */
+  jsSnippet?: string;
+  /** Milliseconds to wait after the JS snippet executes before capturing the DOM */
+  waitMs?: number;
 }
 
 export interface ScrapingBeeResult {
@@ -68,7 +72,7 @@ export interface ScrapingBeeResult {
 
 // ── URL builder ───────────────────────────────────────────────────────────────
 
-export function buildScrapingBeeUrl(opts: Pick<ScrapingBeeOptions, "url" | "renderJs" | "countryCode" | "mode" | "forwardHeaders" | "blockAds" | "blockResources">): string {
+export function buildScrapingBeeUrl(opts: Pick<ScrapingBeeOptions, "url" | "renderJs" | "countryCode" | "mode" | "forwardHeaders" | "blockAds" | "blockResources" | "jsSnippet" | "waitMs">): string {
   const key = getKey();
   if (!key) throw new Error("SCRAPINGBEE_API_KEY not set");
 
@@ -84,6 +88,8 @@ export function buildScrapingBeeUrl(opts: Pick<ScrapingBeeOptions, "url" | "rend
   if (opts.forwardHeaders) params.set("forward_headers", "true");
   if (opts.blockAds)       params.set("block_ads", "true");
   if (opts.blockResources) params.set("block_resources", "true");
+  if (opts.jsSnippet)      params.set("js_snippet", opts.jsSnippet);
+  if (opts.waitMs)         params.set("wait", String(opts.waitMs));
 
   if (mode === "stealth") {
     params.set("stealth_proxy", "true");

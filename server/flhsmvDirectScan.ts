@@ -36,10 +36,9 @@ import crypto from "crypto";
 import { db } from "./db";
 import { crashReports } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { proxiedFetch } from "./scrapingBeeClient";
+import { scrapingBeeFetch } from "./scrapingBeeClient";
 
 const FLHSMV_BASE = "https://services.flhsmv.gov";
-const FLHSMV_SEARCH_URL = `${FLHSMV_BASE}/CRRService/api/CrashReport/SearchReport`;
 
 // SWFL personal-injury target counties — all FL agencies in these counties file with FLHSMV
 const SCAN_COUNTIES = ["LEE", "COLLIER", "CHARLOTTE", "SARASOTA", "MANATEE"];
@@ -52,9 +51,6 @@ const SCAN_DAYS_BACK_SCHEDULED = 3;
 
 // Run every 2 hours — catches local agency reports shortly after filing
 const SCAN_INTERVAL_MS = 2 * 60 * 60 * 1000;
-
-const flhsmvFetch = (targetUrl: string, init: RequestInit = {}) =>
-  proxiedFetch(targetUrl, init, { renderJs: false, countryCode: "us" });
 
 function buildDirectScanKey(officialReportNumber: string): string {
   const hash = crypto
@@ -100,41 +96,74 @@ export async function scanCountyDate(
 
   let searchData: any[];
   try {
-    const resp = await flhsmvFetch(FLHSMV_SEARCH_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
-        "Origin": FLHSMV_BASE,
-        "Referer": `${FLHSMV_BASE}/crashreportrequest/`,
-      },
-      body: JSON.stringify({
-        County: county.toUpperCase(),
-        CrashDate: crashDate,
-        ToCrashDate: toCrashDate ?? null,
-        City: null,
-        CrashStreet: null,
-        ReportNumber: null,
-        ReportSection: null,
-        AtFaultDriverLastName: null,
-        AtFaultDriverFirstName: null,
-        VehicleVIN: null,
-      }),
-      signal: AbortSignal.timeout(30_000),
+    // SearchReport requires a session cookie set by the portal page — a direct POST
+    // returns 401. Load the portal in ScrapingBee's JS renderer and fire the XHR
+    // from inside that page context so same-origin cookies are included automatically.
+    const payload = {
+      County: county.toUpperCase(),
+      CrashDate: crashDate,
+      ToCrashDate: toCrashDate ?? null,
+      City: null, CrashStreet: null, ReportNumber: null,
+      ReportSection: null, AtFaultDriverLastName: null,
+      AtFaultDriverFirstName: null, VehicleVIN: null,
+    };
+    const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64");
+
+    const jsSnippet = Buffer.from(`
+      (async () => {
+        try {
+          const r = await fetch('/CRRService/api/CrashReport/SearchReport', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: atob('${payloadB64}'),
+          });
+          const d = await r.json();
+          document.body.setAttribute('data-apex-status', String(r.status));
+          document.body.setAttribute('data-apex-b64', btoa(unescape(encodeURIComponent(JSON.stringify(d)))));
+        } catch (e) {
+          document.body.setAttribute('data-apex-status', '0');
+          document.body.setAttribute('data-apex-b64', btoa('[]'));
+        }
+      })();
+    `).toString("base64");
+
+    const rendered = await scrapingBeeFetch({
+      url: `${FLHSMV_BASE}/crashreportrequest/`,
+      renderJs: true,
+      countryCode: "us",
+      jsSnippet,
+      waitMs: 8000,
     });
 
-    if (!resp.ok) {
-      console.warn(`[DIRECT-SCAN] FLHSMV returned HTTP ${resp.status} for ${county}/${crashDate}`);
+    if (!rendered.ok) {
+      console.warn(`[DIRECT-SCAN] ScrapingBee error ${rendered.status} for ${county}/${dateLabel}`);
       stats.failed++;
       return stats;
     }
 
-    const json = await resp.json();
+    const statusAttr = rendered.html.match(/data-apex-status="(\d+)"/)?.[1];
+    const apiStatus = parseInt(statusAttr ?? "0", 10);
+    if (apiStatus >= 400) {
+      console.warn(`[DIRECT-SCAN] FLHSMV SearchReport returned HTTP ${apiStatus} for ${county}/${dateLabel}`);
+      stats.failed++;
+      return stats;
+    }
+
+    const b64Match = rendered.html.match(/data-apex-b64="([A-Za-z0-9+/=]+)"/);
+    if (!b64Match) {
+      console.warn(`[DIRECT-SCAN] JS render: result attribute missing for ${county}/${dateLabel}`);
+      stats.failed++;
+      return stats;
+    }
+
+    const json = JSON.parse(Buffer.from(b64Match[1], "base64").toString("utf8"));
     searchData = Array.isArray(json) ? json : (json?.ReportNumber ? [json] : []);
   } catch (err: any) {
-    console.warn(`[DIRECT-SCAN] Network error for ${county}/${dateLabel}: ${err.message}`);
+    console.warn(`[DIRECT-SCAN] Error for ${county}/${dateLabel}: ${err.message}`);
     stats.failed++;
     return stats;
   }
