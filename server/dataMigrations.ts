@@ -1304,6 +1304,13 @@ const MIGRATIONS: DataMigration[] = [
     `,
   },
   {
+    // v2: single-statement fallback in case the runner failed to execute the
+    // multi-statement v1 migration above (Neon HTTP rejects multi-statement batches).
+    // This guarantees the column exists even if v1's CREATE INDEX failed mid-flight.
+    name: "2026-05-20-crash-reports-next-attempt-at-v2",
+    sql: `ALTER TABLE crash_reports ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ`,
+  },
+  {
     name: "2026-05-19-reset-crash-type-names-to-placeholder",
     sql: `
       -- Reset contacts whose first_name contains a crash-type descriptor or
@@ -1410,7 +1417,16 @@ export async function runDataMigrations(): Promise<void> {
           return;
         }
 
-        await tx.execute(sql.raw(migration.sql));
+        // Split on semicolons so each DDL statement runs in its own execute()
+        // call. The Neon serverless HTTP adapter rejects multi-statement batches,
+        // which caused the next_attempt_at column migration to silently fail.
+        const statements = migration.sql
+          .split(";")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+        for (const stmt of statements) {
+          await tx.execute(sql.raw(stmt));
+        }
         await tx.execute(
           sql`INSERT INTO _data_migrations (name) VALUES (${migration.name})
               ON CONFLICT DO NOTHING`,

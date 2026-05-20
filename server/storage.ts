@@ -1857,15 +1857,30 @@ export class DatabaseStorage implements IStorage {
   async getAndLockPendingReports(limit = 2, workerId = "default") {
     const now = new Date();
     return await db.transaction(async (tx) => {
-      const pending = await tx.execute(sql`
-        SELECT id FROM crash_reports
-        WHERE status IN ('PENDING', 'RETRY_LATER')
-          AND locked_at IS NULL
-          AND (next_attempt_at IS NULL OR next_attempt_at <= now())
-        ORDER BY created_at ASC
-        LIMIT ${limit}
-        FOR UPDATE SKIP LOCKED
-      `);
+      // Prefer the full query with next_attempt_at deferral. If the column hasn't
+      // been added yet (migration pending), fall back to the simple form so the
+      // worker doesn't go entirely dark while awaiting the schema fix.
+      let pending: Awaited<ReturnType<typeof tx.execute>>;
+      try {
+        pending = await tx.execute(sql`
+          SELECT id FROM crash_reports
+          WHERE status IN ('PENDING', 'RETRY_LATER')
+            AND locked_at IS NULL
+            AND (next_attempt_at IS NULL OR next_attempt_at <= now())
+          ORDER BY created_at ASC
+          LIMIT ${limit}
+          FOR UPDATE SKIP LOCKED
+        `);
+      } catch {
+        pending = await tx.execute(sql`
+          SELECT id FROM crash_reports
+          WHERE status = 'PENDING'
+            AND locked_at IS NULL
+          ORDER BY created_at ASC
+          LIMIT ${limit}
+          FOR UPDATE SKIP LOCKED
+        `);
+      }
       const ids = (pending.rows || []).map((r: { id: number }) => r.id);
       if (ids.length === 0) return [];
       return tx.update(crashReports)

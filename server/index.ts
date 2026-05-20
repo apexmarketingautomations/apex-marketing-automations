@@ -2125,6 +2125,34 @@ RULES:
         );
       }
 
+      // ── Schema column presence validation (critical columns) ─────────────────
+      try {
+        const criticalColumns: Array<{ table: string; column: string }> = [
+          { table: "crash_reports", column: "next_attempt_at" },
+        ];
+        for (const { table, column } of criticalColumns) {
+          const result = await db.execute<{ exists: boolean }>(
+            sql`SELECT EXISTS (
+              SELECT 1 FROM information_schema.columns
+              WHERE table_name = ${table} AND column_name = ${column}
+            ) AS exists`
+          );
+          const rows = (result as any).rows ?? result;
+          const present = Array.isArray(rows) ? rows[0]?.exists : false;
+          if (present) {
+            console.log(`[SCHEMA] ${table}.${column} present=true`);
+          } else {
+            console.error(
+              `[SCHEMA] CRITICAL: ${table}.${column} present=false — ` +
+              `all ${table} writes will fail until this column is added. ` +
+              `Run: ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} TIMESTAMPTZ`
+            );
+          }
+        }
+      } catch (schemaCheckErr: any) {
+        console.error("[SCHEMA] Column validation check failed:", schemaCheckErr?.message);
+      }
+
       // ── Phase 1A: Database boot validation ──────────────────────────────────
       try {
         const { runBootValidation } = await import("./db/bootValidator");
