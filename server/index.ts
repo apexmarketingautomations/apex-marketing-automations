@@ -88,6 +88,24 @@ app.use(
     },
   })
 );
+
+const voiceBrowserCsp = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:",
+  "style-src 'self' 'unsafe-inline' https:",
+  "img-src 'self' data: https:",
+  "connect-src 'self' https: wss:",
+  "media-src 'self' blob: data: https:",
+  "worker-src 'self' blob:",
+  "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://*.daily.co https://*.vapi.ai",
+  "frame-ancestors 'self' https://*.replit.dev https://*.repl.co https://replit.com",
+].join("; ");
+
+app.use(["/kiosk/frontdesk", "/frontdesk", "/voice-agent"], (_req, res, next) => {
+  res.setHeader("Content-Security-Policy", voiceBrowserCsp);
+  next();
+});
+
 const httpServer = createServer(app);
 
 declare module "http" {
@@ -813,6 +831,22 @@ async function validateMetaCredentials() {
     startApifyScheduler();
   } catch (retroErr: any) {
     console.error("[STARTUP] Retro skip trace scheduler failed (non-fatal):", retroErr?.message);
+  }
+
+  try {
+    const { startSentinelFollowupScheduler } = await import("./crashIngestPipeline");
+    startSentinelFollowupScheduler();
+    console.log("[STARTUP] ✅ Sentinel follow-up scheduler started — creates FLHSMV lookup jobs for AWAITING crash reports (every 4h)");
+  } catch (followupErr: any) {
+    console.error("[STARTUP] Sentinel follow-up scheduler failed to start (non-fatal):", followupErr?.message);
+  }
+
+  try {
+    const { startFLHSMVDirectScanScheduler } = await import("./flhsmvDirectScan");
+    startFLHSMVDirectScanScheduler();
+    console.log("[STARTUP] ✅ FLHSMV direct scan scheduler started — discovers local agency crashes (Cape Coral PD, Fort Myers PD, etc.) every 2h");
+  } catch (directScanErr: any) {
+    console.error("[STARTUP] FLHSMV direct scan scheduler failed to start (non-fatal):", directScanErr?.message);
   }
   }
 

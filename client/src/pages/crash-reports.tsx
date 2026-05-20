@@ -549,6 +549,25 @@ function ReportDetailView({ reportId, onBack }: { reportId: number; onBack: () =
             </div>
           )}
 
+          {report.status === "COMPLETED" && report.officialReportNumber && (
+            <div className="bg-[#0a0a0a] border border-cyan-500/20 rounded-2xl p-6">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <FileText size={14} className="text-cyan-400" /> Police Report PDF
+              </h3>
+              <p className="text-slate-400 text-xs mb-3">
+                Download the official HSMV 90006 police crash report (FLHSMV).
+                Local agency reports (LCSO, Cape Coral PD, Fort Myers PD) are typically available within 24–48 hours.
+              </p>
+              <a
+                href={`/api/crash-reports/${reportId}/pdf`}
+                className="inline-flex items-center gap-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors"
+                data-testid="button-download-police-report"
+              >
+                <Upload size={14} className="rotate-180" /> Download police report (PDF)
+              </a>
+            </div>
+          )}
+
           {report.status === "COMPLETED" && (
             <div className="bg-[#0a0a0a] border border-white/10 rounded-2xl p-6">
               <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">

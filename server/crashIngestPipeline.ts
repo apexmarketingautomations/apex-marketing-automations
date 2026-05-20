@@ -916,6 +916,145 @@ export function stopCrashIngestPipeline(): void {
   console.log("[CRASH-INGEST] Pipeline stopped");
 }
 
+// ── Sentinel Follow-up Scheduler ─────────────────────────────────────────────
+//
+// sentinel_auto crash reports are created as AWAITING. The crashReportWorker
+// only picks up PENDING status. To bridge the gap, this scheduler periodically
+// scans for AWAITING sentinel_auto reports older than MIN_AGE_HOURS (24h) and
+// creates sentinel_followup child jobs — the worker then searches FLHSMV by
+// county+date to find the official report number and driver details.
+//
+// FLHSMV typically publishes crash reports 1–3 days after the incident.
+// We check every 4 hours so that once a report appears, it's picked up quickly.
+
+const FOLLOWUP_SCHEDULER_INTERVAL_MS = 4 * 60 * 60 * 1000; // every 4 hours
+const FOLLOWUP_MIN_AGE_HOURS = 24; // don't query FLHSMV until 24h after crash
+
+let followupSchedulerInterval: ReturnType<typeof setInterval> | null = null;
+
+async function runSentinelFollowupPass(): Promise<{ created: number; skipped: number }> {
+  const { db } = await import("./db");
+  const { crashReports: crashReportsTable } = await import("@shared/schema");
+  const { eq, and, lt } = await import("drizzle-orm");
+
+  const cutoff = new Date(Date.now() - FOLLOWUP_MIN_AGE_HOURS * 60 * 60 * 1000);
+
+  const parents = await db
+    .select({
+      id:           crashReportsTable.id,
+      reportNumber: crashReportsTable.reportNumber,
+      subAccountId: crashReportsTable.subAccountId,
+      data:         crashReportsTable.data,
+    })
+    .from(crashReportsTable)
+    .where(
+      and(
+        eq(crashReportsTable.source, "sentinel_auto"),
+        eq(crashReportsTable.status, "AWAITING"),
+        lt(crashReportsTable.createdAt, cutoff),
+      )
+    )
+    .limit(500);
+
+  if (parents.length === 0) return { created: 0, skipped: 0 };
+
+  console.log(`[FOLLOWUP-SCHEDULER] Found ${parents.length} AWAITING sentinel_auto reports older than ${FOLLOWUP_MIN_AGE_HOURS}h`);
+
+  let created = 0;
+  let skipped = 0;
+
+  for (const parent of parents) {
+    const meta = (parent.data as Record<string, any> | null) ?? {};
+    const county   = meta.county   as string | undefined;
+    const received = meta.received as string | undefined;
+    const location = meta.location as string | undefined;
+    const lat      = meta.lat      as number | undefined;
+    const lng      = meta.lng      as number | undefined;
+
+    if (!county || !received) {
+      skipped++;
+      continue;
+    }
+
+    const followupKey = `FLHSMV-FOLLOWUP-${parent.reportNumber}`;
+    const existing = await db
+      .select({ id: crashReportsTable.id })
+      .from(crashReportsTable)
+      .where(
+        and(
+          eq(crashReportsTable.reportNumber, followupKey),
+          eq(crashReportsTable.source, "sentinel_followup"),
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
+      skipped++;
+      continue;
+    }
+
+    try {
+      await storage.createCrashReport({
+        reportNumber:        followupKey,
+        source:              "sentinel_followup",
+        status:              "PENDING",
+        subAccountId:        parent.subAccountId ?? undefined,
+        retryCount:          0,
+        serviceFailureCount: 0,
+        data: {
+          sentinelReportId:     parent.id,
+          sentinelReportNumber: parent.reportNumber,
+          county,
+          crashDate:  received.split("T")[0],
+          location:   location ?? "",
+          lat:        lat  ?? null,
+          lng:        lng  ?? null,
+          received,
+          spawnedBy:  "followup-scheduler",
+          spawnedAt:  new Date().toISOString(),
+        },
+      });
+      created++;
+    } catch (err: any) {
+      console.warn(`[FOLLOWUP-SCHEDULER] Failed to create followup for parent ${parent.id}: ${err.message}`);
+      skipped++;
+    }
+  }
+
+  if (created > 0) {
+    console.log(`[FOLLOWUP-SCHEDULER] Created ${created} sentinel_followup job(s), skipped ${skipped}`);
+  }
+  return { created, skipped };
+}
+
+export function startSentinelFollowupScheduler(): void {
+  if (followupSchedulerInterval) {
+    console.log("[FOLLOWUP-SCHEDULER] Already running");
+    return;
+  }
+
+  console.log(`[FOLLOWUP-SCHEDULER] Started — checking every ${FOLLOWUP_SCHEDULER_INTERVAL_MS / 3600000}h for AWAITING sentinel reports older than ${FOLLOWUP_MIN_AGE_HOURS}h`);
+
+  const tick = async () => {
+    try {
+      await runSentinelFollowupPass();
+    } catch (err: any) {
+      console.error("[FOLLOWUP-SCHEDULER] Tick error:", err.message);
+    }
+  };
+
+  // Run immediately on start to catch any backlog, then every 4h
+  tick();
+  followupSchedulerInterval = setInterval(tick, FOLLOWUP_SCHEDULER_INTERVAL_MS);
+}
+
+export function stopSentinelFollowupScheduler(): void {
+  if (followupSchedulerInterval) {
+    clearInterval(followupSchedulerInterval);
+    followupSchedulerInterval = null;
+  }
+}
+
 /**
  * Backfill reconciliation: scan all sentinel_auto crash reports from the last
  * `daysBack` days that still have processedToLead=false and attempt downstream

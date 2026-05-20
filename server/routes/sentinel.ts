@@ -1388,6 +1388,103 @@ export function registerRetroSkipTraceRoute(app: any) {
     }
   });
 
+  // ── FDOT SSOGis Crash Ingest ─────────────────────────────────────────────────
+  // POST /api/internal/fdot-crash-ingest
+  // Admin-secret gated. Fetches crash records from FDOT's free ArcGIS API (no
+  // ScrapingBee needed) and creates sentinel_followup-style PENDING jobs so the
+  // FLHSMV worker picks them up and fetches the full police report + PDF.
+  //
+  // The FDOT data covers ALL FL agencies (LCSO, Cape Coral PD, Fort Myers PD, FHP)
+  // but is published annually — currently complete through 2022.
+  //
+  // Body:
+  //   county       - "lee" | "collier" | "charlotte" | ... (default "lee")
+  //   years        - array of calendar years (default all confirmed: 2015-2022)
+  //   subAccountId - required: which account to attach these records to
+  //   dryRun       - if true, counts only — no DB writes
+  //   limitPerYear - max records per year (default 50000)
+  app.post("/api/internal/fdot-crash-ingest", async (req: any, res: any) => {
+    try {
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured" });
+      const headerVal = ((req.headers["x-admin-secret"] as string) || "").trim();
+      if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+
+      const county      = String(req.body?.county ?? "lee").toLowerCase();
+      const subAccountId = Number(req.body?.subAccountId);
+      const dryRun      = req.body?.dryRun === true;
+      const limitPerYear = Math.min(Number(req.body?.limitPerYear ?? 50000), 100000);
+
+      if (!subAccountId || isNaN(subAccountId)) {
+        return res.status(400).json({ error: "subAccountId is required" });
+      }
+
+      let years: number[] | undefined;
+      if (Array.isArray(req.body?.years) && req.body.years.length > 0) {
+        years = req.body.years.map(Number).filter((y: number) => y >= 2007 && y <= 2030);
+      }
+
+      const { ingestFDOTCountyCrashes } = await import("../fdotCrashFeed");
+
+      // Fire-and-forget — can take minutes for large counties
+      ingestFDOTCountyCrashes({ county, years, subAccountId, dryRun, limitPerYear }).catch((err: any) =>
+        console.error("[FDOT-FEED] Unhandled error in background job:", err?.message)
+      );
+
+      res.json({
+        ok: true,
+        message: `FDOT crash ingest started — county=${county} years=${years?.join(",") ?? "2015-2022"} dryRun=${dryRun}. Check server logs for progress.`,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── FLHSMV Direct Scan ────────────────────────────────────────────────────────
+  // POST /api/internal/flhsmv-direct-scan
+  // Admin-secret gated. Manually triggers a FLHSMV county+date discovery scan
+  // to find crash reports from ALL agencies (FHP, LCSO, Cape Coral PD, Fort Myers PD, etc.)
+  // that were filed within the given date window. Creates PENDING crash_reports immediately.
+  //
+  // Body:
+  //   counties     - array of county names (default ["LEE","COLLIER","CHARLOTTE","SARASOTA","MANATEE"])
+  //   daysBack     - how many days of history to scan (default 14, max 90)
+  //   subAccountId - optional: which account to attach records to (auto-detected if omitted)
+  //   dryRun       - if true, counts only — no DB writes
+
+  app.post("/api/internal/flhsmv-direct-scan", async (req: any, res: any) => {
+    try {
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured" });
+      const headerVal = ((req.headers["x-admin-secret"] as string) || "").trim();
+      if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+
+      const daysBack = Math.min(Number(req.body?.daysBack ?? 14), 90);
+      const dryRun   = req.body?.dryRun === true;
+      const subAccountId = req.body?.subAccountId ? Number(req.body.subAccountId) : undefined;
+
+      const defaultCounties = ["LEE", "COLLIER", "CHARLOTTE", "SARASOTA", "MANATEE"];
+      let counties: string[] = defaultCounties;
+      if (Array.isArray(req.body?.counties) && req.body.counties.length > 0) {
+        counties = req.body.counties.map((c: string) => String(c).toUpperCase()).filter(Boolean);
+      }
+
+      const { runDirectScan } = await import("../flhsmvDirectScan");
+
+      // Fire-and-forget — can take several minutes for large date ranges
+      runDirectScan({ counties, daysBack, subAccountId, dryRun }).catch((err: any) =>
+        console.error("[DIRECT-SCAN] Unhandled error in background job:", err?.message)
+      );
+
+      res.json({
+        ok: true,
+        message: `FLHSMV direct scan started — counties=${counties.join(",")} daysBack=${daysBack} dryRun=${dryRun}. Check server logs for progress.`,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ── Pipeline Health ───────────────────────────────────────────────────────────
   // GET /api/internal/pipeline-health
   // Admin-secret gated. Returns current status of all pipeline subsystems.
@@ -1409,7 +1506,7 @@ export function registerRetroSkipTraceRoute(app: any) {
       const [pending, processing, complete, notFound, failed] = await Promise.all([
         db.select({ n: count() }).from(crashReports).where(eq(crashReports.status, "PENDING")),
         db.select({ n: count() }).from(crashReports).where(eq(crashReports.status, "PROCESSING")),
-        db.select({ n: count() }).from(crashReports).where(eq(crashReports.status, "COMPLETE")),
+        db.select({ n: count() }).from(crashReports).where(eq(crashReports.status, "COMPLETED")),
         db.select({ n: count() }).from(crashReports).where(eq(crashReports.status, "NOT_FOUND")),
         db.select({ n: count() }).from(crashReports).where(eq(crashReports.status, "FAILED")),
       ]);
@@ -1417,7 +1514,7 @@ export function registerRetroSkipTraceRoute(app: any) {
       // FLHSMV enrichment counts
       const [completeWithOfficial, alreadyEnriched] = await Promise.all([
         db.select({ n: count() }).from(crashReports).where(
-          and(eq(crashReports.status, "COMPLETE"), isNotNull(crashReports.officialReportNumber))
+          and(eq(crashReports.status, "COMPLETED"), isNotNull(crashReports.officialReportNumber))
         ),
         // Contacts tagged flhsmv-enriched (approximate count via SQL array contains)
         db.execute(
