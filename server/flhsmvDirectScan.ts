@@ -63,6 +63,14 @@ export function bustSessionCache(): void {
   _sessionCooldownUntil = 0;
 }
 
+/** Called by the admin cookie-push endpoint — injects a fresh cookie without redeploy */
+export function setManualCookie(cookie: string): void {
+  _portalCookies = cookie;
+  _portalCookiesFetchedAt = Date.now();
+  _sessionCooldownUntil = 0;
+  console.log(`[FLHSMV-SESSION] manual cookie injected via API (${cookie.length} chars)`);
+}
+
 export function isSessionOnCooldown(): { cooldown: boolean; remainingMs: number } {
   const remaining = Math.max(0, _sessionCooldownUntil - Date.now());
   return { cooldown: remaining > 0, remainingMs: remaining };

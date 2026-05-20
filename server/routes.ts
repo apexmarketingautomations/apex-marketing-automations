@@ -103,6 +103,28 @@ export async function registerRoutes(
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
+  // FLHSMV cookie push — accepts a fresh cookie string from the local Mac auto-refresher
+  // and injects it into the in-memory session without requiring a Railway redeploy.
+  app.post("/api/admin/flhsmv-cookie", async (req: any, res: any) => {
+    try {
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured" });
+      const headerVal = ((req.headers["x-admin-secret"] as string) || "").trim();
+      if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+
+      const cookie = (req.body?.cookie as string || "").trim();
+      if (!cookie || !cookie.includes("ASP.NET_SessionId")) {
+        return res.status(400).json({ error: "Body must include { cookie } containing ASP.NET_SessionId" });
+      }
+
+      const { setManualCookie } = await import("./flhsmvDirectScan");
+      setManualCookie(cookie);
+      return res.json({ ok: true, injectedAt: new Date().toISOString(), cookieLength: cookie.length });
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message });
+    }
+  });
+
   // FLHSMV session diagnostic — tests 4 ScrapingBee mode combinations and reports
   // cookie capture results without exposing actual cookie values.
   app.get("/api/admin/debug/flhsmv-session", async (req: any, res: any) => {
