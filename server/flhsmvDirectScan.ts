@@ -69,6 +69,20 @@ export function isSessionOnCooldown(): { cooldown: boolean; remainingMs: number 
 }
 
 async function doFetchPortalCookies(): Promise<string> {
+  // ── Manual override (zero-cost) ─────────────────────────────────────────────
+  // If FLHSMV_MANUAL_SESSION_COOKIE is set in Railway env vars, use it directly.
+  // Get the value by visiting https://services.flhsmv.gov/ in your browser,
+  // opening DevTools → Application → Cookies, and copying the ASP.NET_SessionId value.
+  // Set FLHSMV_MANUAL_SESSION_COOKIE=ASP.NET_SessionId=<value> in Railway.
+  const manualCookie = process.env.FLHSMV_MANUAL_SESSION_COOKIE?.trim();
+  if (manualCookie) {
+    console.log("[FLHSMV-SESSION] using manual cookie from FLHSMV_MANUAL_SESSION_COOKIE env var");
+    _portalCookies = manualCookie;
+    _portalCookiesFetchedAt = Date.now();
+    _sessionCooldownUntil = 0;
+    return manualCookie;
+  }
+
   // Strategy: Nimble first (it handles Akamai-protected FL government sites),
   // then ScrapingBee stealth as fallback.
   // ScrapingBee error 613 = Akamai kills standard/premium renderer on FLHSMV.
@@ -153,6 +167,17 @@ async function doFetchPortalCookies(): Promise<string> {
 
 export async function getPortalCookies(): Promise<string> {
   const now = Date.now();
+
+  // Manual cookie bypasses cooldown entirely
+  const manualCookie = process.env.FLHSMV_MANUAL_SESSION_COOKIE?.trim();
+  if (manualCookie) {
+    if (_portalCookies !== manualCookie) {
+      _portalCookies = manualCookie;
+      _portalCookiesFetchedAt = now;
+      _sessionCooldownUntil = 0;
+    }
+    return manualCookie;
+  }
 
   if (_sessionCooldownUntil > now) {
     const remainSec = Math.ceil((_sessionCooldownUntil - now) / 1000);
