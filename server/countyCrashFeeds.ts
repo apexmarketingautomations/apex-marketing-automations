@@ -242,6 +242,7 @@ export async function fetchLeeCrashFeed(): Promise<SentinelIncidentRaw[]> {
           message: msg.slice(0, 200),
         }),
       )
+      // allow-silent-catch: logSystemEvent failure is non-critical; feed result is already cached
       .catch(() => {});
 
     // Prefer last known snapshot over an empty feed.

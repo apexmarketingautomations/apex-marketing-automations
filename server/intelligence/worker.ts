@@ -171,8 +171,8 @@ export function startIntelligenceWorkers(): void {
   // Mega Cycle is an optional, disciplined autonomy loop that runs alongside
   // Apex Intelligence. It is intentionally off by default; enable via env vars.
   try {
-    import("./megaCycleJob").then((mod) => mod.registerMegaCycleJobHandler()).catch(() => {});
-    import("./megaCycleScheduler").then((mod) => mod.startMegaCycleScheduler()).catch(() => {});
+    import("./megaCycleJob").then((mod) => mod.registerMegaCycleJobHandler()).catch(() => {}); // allow-silent-catch: optional subsystem, startup failure is non-fatal
+    import("./megaCycleScheduler").then((mod) => mod.startMegaCycleScheduler()).catch(() => {}); // allow-silent-catch: optional subsystem, startup failure is non-fatal
   } catch (err) {
     // allow-silent-catch: optional subsystem
   }

@@ -239,6 +239,7 @@ export async function runDirectScan(options: {
       const { getActiveAccountIds } = await import("./crashIngestPipeline");
       const accounts = await getActiveAccountIds();
       subAccountId = accounts.length > 0 ? [...accounts].sort((a, b) => a - b)[0] : 3;
+    // allow-silent-catch: if account resolution fails, fall back to default sub-account ID 3
     } catch {
       subAccountId = 3;
     }
