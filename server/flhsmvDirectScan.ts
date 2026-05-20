@@ -52,19 +52,49 @@ async function getPortalCookies(): Promise<string> {
   if (_portalCookies && (now - _portalCookiesFetchedAt) < PORTAL_COOKIE_TTL_MS) {
     return _portalCookies;
   }
-  const result = await scrapingBeeFetch({
-    url: FLHSMV_PORTAL_URL,
-    renderJs: true,
-    countryCode: "us",
-    jsonResponse: true,
-    blockResources: true, // block images/fonts to prevent renderer OOM
-    waitMs: 3000,
-  });
-  const cookies = (result.cookies ?? []).map((c: any) => `${c.name}=${c.value}`).join("; ");
-  _portalCookies = cookies;
-  _portalCookiesFetchedAt = now;
-  console.log(`[DIRECT-SCAN] Portal session cookies captured (${(result.cookies ?? []).length} cookies)`);
-  return cookies;
+
+  // Attempt 1: renderJs + wait 8s. Attempt 2: same but wait 15s. Attempt 3: no render (diagnostic).
+  const attempts = [
+    { renderJs: true,  blockResources: false, waitMs: 8000  },
+    { renderJs: true,  blockResources: false, waitMs: 15000 },
+    { renderJs: false, blockResources: false, waitMs: 0     },
+  ] as const;
+
+  for (let i = 0; i < attempts.length; i++) {
+    const opts = attempts[i];
+    console.log(
+      `[DIRECT-SCAN] Portal warm-up attempt ${i + 1}/3 — ` +
+      `render_js=${opts.renderJs} block_resources=${opts.blockResources} wait=${opts.waitMs}ms json_response=true`,
+    );
+
+    const result = await scrapingBeeFetch({
+      url: FLHSMV_PORTAL_URL,
+      countryCode: "us",
+      jsonResponse: true,
+      ...opts,
+    });
+
+    console.log(`[DIRECT-SCAN] Portal warm-up attempt ${i + 1} — status=${result.status} ok=${result.ok} json_envelope_parsed=${!result.error}`);
+
+    const rawCookies = result.cookies ?? [];
+    console.log(`[DIRECT-SCAN] Portal warm-up attempt ${i + 1} — cookie count=${rawCookies.length} names=[${rawCookies.map((c: any) => c.name).join(", ")}]`);
+
+    if (rawCookies.length > 0) {
+      const cookieHeader = rawCookies.map((c: any) => `${c.name}=${c.value}`).join("; ");
+      _portalCookies = cookieHeader;
+      _portalCookiesFetchedAt = now;
+      return cookieHeader;
+    }
+
+    if (result.status >= 500) {
+      console.warn(`[DIRECT-SCAN] Portal warm-up attempt ${i + 1} — ScrapingBee 500, will retry`);
+    }
+  }
+
+  console.warn("[DIRECT-SCAN] ABORT — no FLHSMV cookies captured after 3 attempts — not attempting SearchReport");
+  _portalCookies = "";
+  _portalCookiesFetchedAt = 0;
+  return "";
 }
 
 // SWFL personal-injury target counties — all FL agencies in these counties file with FLHSMV
@@ -131,10 +161,15 @@ export async function scanCountyDate(
       ReportSection: null, AtFaultDriverLastName: null,
       AtFaultDriverFirstName: null, VehicleVIN: null,
     };
-    // Step 1: grab session cookies from the portal (no JS render — avoids renderer 500s)
+    // Step 1: grab session cookies from the portal
     const cookieHeader = await getPortalCookies();
+    if (!cookieHeader) {
+      stats.failed++;
+      return stats;
+    }
 
-    // Step 2: direct POST to SearchReport with those cookies — no headless browser needed
+    // Step 2: direct POST to SearchReport with session cookies
+    console.log(`[DIRECT-SCAN] Attempting SearchReport POST for ${county}/${dateLabel}`);
     const resp = await proxiedFetch(FLHSMV_SEARCH_URL, {
       method: "POST",
       headers: {

@@ -100,9 +100,9 @@ export function buildScrapingBeeUrl(opts: Pick<ScrapingBeeOptions, "url" | "rend
     country_code: opts.countryCode ?? "us",
   });
 
-  if (opts.forwardHeaders) params.set("forward_headers", "true");
-  if (opts.blockAds)       params.set("block_ads", "true");
-  if (opts.blockResources) params.set("block_resources", "true");
+  if (opts.forwardHeaders)              params.set("forward_headers", "true");
+  if (opts.blockAds)                   params.set("block_ads", "true");
+  if (opts.blockResources !== undefined) params.set("block_resources", String(opts.blockResources));
   if (opts.jsSnippet)      params.set("js_snippet", opts.jsSnippet);
   if (opts.waitMs)         params.set("wait", String(opts.waitMs));
   if (opts.jsonResponse)   params.set("json_response", "true");
