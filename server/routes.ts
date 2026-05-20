@@ -150,11 +150,19 @@ export async function registerRoutes(
         return res.json({ ok: false, error: "SCRAPINGBEE_API_KEY not configured", results });
       }
 
-      // Mode B: render_js=true, block_resources=false, json_response=false
+      // Mode B: render_js=true on premium tier — likely to get Akamai-killed, but
+      // useful as a baseline so we know whether stealth is actually buying us something.
       try {
-        const r = await scrapingBeeFetch({ url: FLHSMV_PORTAL_URL, renderJs: true, blockResources: false, jsonResponse: false, countryCode: "us" });
+        const r = await scrapingBeeFetch({
+          url: FLHSMV_PORTAL_URL,
+          renderJs: true,
+          blockResources: false,
+          jsonResponse: false,
+          countryCode: "us",
+          mode: "premium",
+        });
         results.push({
-          mode: "B_sb_render_no_json",
+          mode: "B_sb_render_premium_no_json",
           status: r.status,
           ok: r.ok,
           bodyPreview: r.html.slice(0, 500),
@@ -163,14 +171,23 @@ export async function registerRoutes(
           error: r.error,
         });
       } catch (err: any) {
-        results.push({ mode: "B_sb_render_no_json", status: 0, ok: false, bodyPreview: "", cookieCount: 0, cookieNames: [], error: err.message });
+        results.push({ mode: "B_sb_render_premium_no_json", status: 0, ok: false, bodyPreview: "", cookieCount: 0, cookieNames: [], error: err.message });
       }
 
-      // Mode C: render_js=true, block_resources=false, json_response=true, wait=5s
+      // Mode C: render_js=true on stealth tier — expensive, but the best shot at
+      // surviving Akamai long enough to set session cookies.
       try {
-        const r = await scrapingBeeFetch({ url: FLHSMV_PORTAL_URL, renderJs: true, blockResources: false, jsonResponse: true, waitMs: 5000, countryCode: "us" });
+        const r = await scrapingBeeFetch({
+          url: FLHSMV_PORTAL_URL,
+          renderJs: true,
+          blockResources: false,
+          jsonResponse: true,
+          waitMs: 5000,
+          countryCode: "us",
+          mode: "stealth",
+        });
         results.push({
-          mode: "C_sb_render_json_wait5s",
+          mode: "C_sb_render_stealth_json_wait5s",
           status: r.status,
           ok: r.ok,
           bodyPreview: r.html.slice(0, 500),
@@ -179,14 +196,22 @@ export async function registerRoutes(
           error: r.error,
         });
       } catch (err: any) {
-        results.push({ mode: "C_sb_render_json_wait5s", status: 0, ok: false, bodyPreview: "", cookieCount: 0, cookieNames: [], error: err.message });
+        results.push({ mode: "C_sb_render_stealth_json_wait5s", status: 0, ok: false, bodyPreview: "", cookieCount: 0, cookieNames: [], error: err.message });
       }
 
-      // Mode D: render_js=false, block_resources=false, json_response=true (cheapest — server-side cookies only)
+      // Mode D: render_js=false on premium tier (cheapest path that still uses the
+      // residential/premium proxy, but cannot run FLHSMV's client-side cookie logic).
       try {
-        const r = await scrapingBeeFetch({ url: FLHSMV_PORTAL_URL, renderJs: false, blockResources: false, jsonResponse: true, countryCode: "us" });
+        const r = await scrapingBeeFetch({
+          url: FLHSMV_PORTAL_URL,
+          renderJs: false,
+          blockResources: false,
+          jsonResponse: true,
+          countryCode: "us",
+          mode: "premium",
+        });
         results.push({
-          mode: "D_sb_no_render_json",
+          mode: "D_sb_no_render_premium_json",
           status: r.status,
           ok: r.ok,
           bodyPreview: r.html.slice(0, 500),
@@ -195,7 +220,7 @@ export async function registerRoutes(
           error: r.error,
         });
       } catch (err: any) {
-        results.push({ mode: "D_sb_no_render_json", status: 0, ok: false, bodyPreview: "", cookieCount: 0, cookieNames: [], error: err.message });
+        results.push({ mode: "D_sb_no_render_premium_json", status: 0, ok: false, bodyPreview: "", cookieCount: 0, cookieNames: [], error: err.message });
       }
 
       // Bust the in-process cache after diagnostics so the next real call starts clean

@@ -70,15 +70,19 @@ async function doFetchPortalCookies(): Promise<string> {
   // proxiedFetch absorbs Set-Cookie headers internally.
   // Attempt A: renderJs=false (server-side cookies only — cheap)
   // Attempt B: renderJs=true (lets FLHSMV JS run to set cookie — expensive, may 500)
+  // ScrapingBee error 613 = Akamai bot-kill on standard/premium renderer.
+  // Stealth proxy (75 credits) is the only tier designed to survive Akamai.
   const attempts = [
-    { renderJs: false, blockResources: false, waitMs: undefined as number | undefined },
-    { renderJs: true,  blockResources: false, waitMs: 8000 },
-  ] as const;
+    { renderJs: true,  blockResources: false, waitMs: 8000,      mode: "stealth"  as const },
+    { renderJs: true,  blockResources: false, waitMs: 12000,     mode: "stealth"  as const },
+    { renderJs: false, blockResources: false, waitMs: undefined,  mode: "premium"  as const },
+  ];
 
   for (let i = 0; i < attempts.length; i++) {
     const opts = attempts[i];
     console.log(
       `[FLHSMV-SESSION] warm-up attempt ${i + 1}/${attempts.length} — ` +
+      `mode=${opts.mode} ` +
       `render_js=${opts.renderJs} block_resources=${opts.blockResources} ` +
       `wait=${opts.waitMs ?? 0}ms json_response=true`,
     );
@@ -86,6 +90,7 @@ async function doFetchPortalCookies(): Promise<string> {
     const result = await scrapingBeeFetch({
       url: FLHSMV_PORTAL_URL,
       countryCode: "us",
+      mode: opts.mode,
       jsonResponse: true,
       renderJs: opts.renderJs,
       blockResources: opts.blockResources,
@@ -94,6 +99,7 @@ async function doFetchPortalCookies(): Promise<string> {
 
     console.log(
       `[FLHSMV-SESSION] warm-up attempt ${i + 1} — ` +
+      `mode=${opts.mode} ` +
       `status=${result.status} ok=${result.ok} ` +
       `json_envelope_parsed=${!result.error} ` +
       `cookie_count=${(result.cookies ?? []).length} ` +
@@ -101,7 +107,10 @@ async function doFetchPortalCookies(): Promise<string> {
     );
 
     if (result.status >= 500) {
-      console.warn(`[FLHSMV-SESSION] ScrapingBee 500 on attempt ${i + 1} — error: ${result.error ?? "unknown"}`);
+      console.warn(
+        `[FLHSMV-SESSION] ScrapingBee failure on attempt ${i + 1} ` +
+        `(mode=${opts.mode}) — status=${result.status} error=${result.error ?? "unknown"}`,
+      );
       _sessionCooldownUntil = Date.now() + SESSION_COOLDOWN_MS;
       continue;
     }

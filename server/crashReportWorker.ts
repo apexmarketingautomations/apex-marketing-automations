@@ -19,7 +19,7 @@ const flhsmvFetch = (targetUrl: string, init: RequestInit = {}) =>
   proxiedFetch(targetUrl, init, { renderJs: false, countryCode: "us" });
 const WORKER_INTERVAL_MS = 5 * 60 * 1000;
 const MAX_RETRIES = 5;
-const MAX_SERVICE_FAILURES = 20;
+const MAX_SERVICE_FAILURES = 40;
 // FLHSMV official reports can take up to 10 days to appear after a crash
 const MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const COOLDOWN_DURATION_MS = 2 * 60 * 1000;
