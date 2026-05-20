@@ -103,6 +103,111 @@ export async function registerRoutes(
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
+  // FLHSMV session diagnostic — tests 4 ScrapingBee mode combinations and reports
+  // cookie capture results without exposing actual cookie values.
+  app.get("/api/admin/debug/flhsmv-session", async (req: any, res: any) => {
+    try {
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured on this server" });
+      const headerVal = ((req.headers["x-admin-secret"] as string) || "").trim();
+      if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+
+      const { scrapingBeeFetch, isScrapingBeeConfigured } = await import("./scrapingBeeClient");
+      const { FLHSMV_PORTAL_URL, bustSessionCache } = await import("./flhsmvDirectScan");
+
+      interface ModeResult {
+        mode: string;
+        status: number;
+        ok: boolean;
+        bodyPreview: string;
+        cookieCount: number;
+        cookieNames: string[];
+        error?: string;
+      }
+
+      const results: ModeResult[] = [];
+
+      // Mode A: direct fetch (no ScrapingBee) — baseline to confirm the portal loads at all
+      try {
+        const r = await fetch(FLHSMV_PORTAL_URL, {
+          headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" },
+          signal: AbortSignal.timeout(15_000),
+        });
+        const body = await r.text();
+        results.push({
+          mode: "A_direct_no_scrapingbee",
+          status: r.status,
+          ok: r.ok,
+          bodyPreview: body.slice(0, 500),
+          cookieCount: 0,
+          cookieNames: [],
+        });
+      } catch (err: any) {
+        results.push({ mode: "A_direct_no_scrapingbee", status: 0, ok: false, bodyPreview: "", cookieCount: 0, cookieNames: [], error: err.message });
+      }
+
+      if (!isScrapingBeeConfigured()) {
+        return res.json({ ok: false, error: "SCRAPINGBEE_API_KEY not configured", results });
+      }
+
+      // Mode B: render_js=true, block_resources=false, json_response=false
+      try {
+        const r = await scrapingBeeFetch({ url: FLHSMV_PORTAL_URL, renderJs: true, blockResources: false, jsonResponse: false, countryCode: "us" });
+        results.push({
+          mode: "B_sb_render_no_json",
+          status: r.status,
+          ok: r.ok,
+          bodyPreview: r.html.slice(0, 500),
+          cookieCount: (r.cookies ?? []).length,
+          cookieNames: (r.cookies ?? []).map((c: any) => c.name),
+          error: r.error,
+        });
+      } catch (err: any) {
+        results.push({ mode: "B_sb_render_no_json", status: 0, ok: false, bodyPreview: "", cookieCount: 0, cookieNames: [], error: err.message });
+      }
+
+      // Mode C: render_js=true, block_resources=false, json_response=true, wait=5s
+      try {
+        const r = await scrapingBeeFetch({ url: FLHSMV_PORTAL_URL, renderJs: true, blockResources: false, jsonResponse: true, waitMs: 5000, countryCode: "us" });
+        results.push({
+          mode: "C_sb_render_json_wait5s",
+          status: r.status,
+          ok: r.ok,
+          bodyPreview: r.html.slice(0, 500),
+          cookieCount: (r.cookies ?? []).length,
+          cookieNames: (r.cookies ?? []).map((c: any) => c.name),
+          error: r.error,
+        });
+      } catch (err: any) {
+        results.push({ mode: "C_sb_render_json_wait5s", status: 0, ok: false, bodyPreview: "", cookieCount: 0, cookieNames: [], error: err.message });
+      }
+
+      // Mode D: render_js=false, block_resources=false, json_response=true (cheapest — server-side cookies only)
+      try {
+        const r = await scrapingBeeFetch({ url: FLHSMV_PORTAL_URL, renderJs: false, blockResources: false, jsonResponse: true, countryCode: "us" });
+        results.push({
+          mode: "D_sb_no_render_json",
+          status: r.status,
+          ok: r.ok,
+          bodyPreview: r.html.slice(0, 500),
+          cookieCount: (r.cookies ?? []).length,
+          cookieNames: (r.cookies ?? []).map((c: any) => c.name),
+          error: r.error,
+        });
+      } catch (err: any) {
+        results.push({ mode: "D_sb_no_render_json", status: 0, ok: false, bodyPreview: "", cookieCount: 0, cookieNames: [], error: err.message });
+      }
+
+      // Bust the in-process cache after diagnostics so the next real call starts clean
+      bustSessionCache();
+
+      const bestMode = results.find(r => r.cookieCount > 0)?.mode ?? null;
+      res.json({ ok: true, testedAt: new Date().toISOString(), bestMode, results });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   registerAuthRoutes(app);
   registerCardIdentityRoutes(app);
   registerDynamicPagesRoutes(app);

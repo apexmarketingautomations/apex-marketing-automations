@@ -36,65 +36,113 @@ import crypto from "crypto";
 import { db } from "./db";
 import { crashReports } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { scrapingBeeFetch, proxiedFetch } from "./scrapingBeeClient";
+import { proxiedFetch, scrapingBeeFetch } from "./scrapingBeeClient";
 
 const FLHSMV_BASE = "https://services.flhsmv.gov";
 const FLHSMV_SEARCH_URL = `${FLHSMV_BASE}/CRRService/api/CrashReport/SearchReport`;
-const FLHSMV_PORTAL_URL = `${FLHSMV_BASE}/crashreportrequest/`;
+export const FLHSMV_PORTAL_URL = `${FLHSMV_BASE}/crashreportrequest/`;
 
-// Cache portal session cookies — re-fetch after 20 minutes
+// ── Session state ─────────────────────────────────────────────────────────────
+// Single-flight: only one warm-up runs at a time; concurrent callers await it.
+// Cooldown: on 500/429, block retries for 10 minutes to avoid hammering FLHSMV.
+
 let _portalCookies = "";
 let _portalCookiesFetchedAt = 0;
-const PORTAL_COOKIE_TTL_MS = 20 * 60 * 1000;
+let _sessionFetchInFlight: Promise<string> | null = null;
+let _sessionCooldownUntil = 0;
 
-async function getPortalCookies(): Promise<string> {
-  const now = Date.now();
-  if (_portalCookies && (now - _portalCookiesFetchedAt) < PORTAL_COOKIE_TTL_MS) {
-    return _portalCookies;
-  }
+const PORTAL_COOKIE_TTL_MS  = 20 * 60 * 1000; // 20 min
+const SESSION_COOLDOWN_MS   = 10 * 60 * 1000; // 10 min on 500/429
 
-  // Attempt 1: renderJs + wait 8s. Attempt 2: same but wait 15s. Attempt 3: no render (diagnostic).
+export function bustSessionCache(): void {
+  _portalCookies = "";
+  _portalCookiesFetchedAt = 0;
+  _sessionCooldownUntil = 0;
+}
+
+export function isSessionOnCooldown(): { cooldown: boolean; remainingMs: number } {
+  const remaining = Math.max(0, _sessionCooldownUntil - Date.now());
+  return { cooldown: remaining > 0, remainingMs: remaining };
+}
+
+async function doFetchPortalCookies(): Promise<string> {
+  // json_response=true is the only way to get cookies through ScrapingBee;
+  // proxiedFetch absorbs Set-Cookie headers internally.
+  // Attempt A: renderJs=false (server-side cookies only — cheap)
+  // Attempt B: renderJs=true (lets FLHSMV JS run to set cookie — expensive, may 500)
   const attempts = [
-    { renderJs: true,  blockResources: false, waitMs: 8000  },
-    { renderJs: true,  blockResources: false, waitMs: 15000 },
-    { renderJs: false, blockResources: false, waitMs: 0     },
+    { renderJs: false, blockResources: false, waitMs: undefined as number | undefined },
+    { renderJs: true,  blockResources: false, waitMs: 8000 },
   ] as const;
 
   for (let i = 0; i < attempts.length; i++) {
     const opts = attempts[i];
     console.log(
-      `[DIRECT-SCAN] Portal warm-up attempt ${i + 1}/3 — ` +
-      `render_js=${opts.renderJs} block_resources=${opts.blockResources} wait=${opts.waitMs}ms json_response=true`,
+      `[FLHSMV-SESSION] warm-up attempt ${i + 1}/${attempts.length} — ` +
+      `render_js=${opts.renderJs} block_resources=${opts.blockResources} ` +
+      `wait=${opts.waitMs ?? 0}ms json_response=true`,
     );
 
     const result = await scrapingBeeFetch({
       url: FLHSMV_PORTAL_URL,
       countryCode: "us",
       jsonResponse: true,
-      ...opts,
+      renderJs: opts.renderJs,
+      blockResources: opts.blockResources,
+      ...(opts.waitMs ? { waitMs: opts.waitMs } : {}),
     });
 
-    console.log(`[DIRECT-SCAN] Portal warm-up attempt ${i + 1} — status=${result.status} ok=${result.ok} json_envelope_parsed=${!result.error}`);
+    console.log(
+      `[FLHSMV-SESSION] warm-up attempt ${i + 1} — ` +
+      `status=${result.status} ok=${result.ok} ` +
+      `json_envelope_parsed=${!result.error} ` +
+      `cookie_count=${(result.cookies ?? []).length} ` +
+      `cookie_names=[${(result.cookies ?? []).map((c: any) => c.name).join(", ")}]`,
+    );
+
+    if (result.status >= 500) {
+      console.warn(`[FLHSMV-SESSION] ScrapingBee 500 on attempt ${i + 1} — error: ${result.error ?? "unknown"}`);
+      _sessionCooldownUntil = Date.now() + SESSION_COOLDOWN_MS;
+      continue;
+    }
 
     const rawCookies = result.cookies ?? [];
-    console.log(`[DIRECT-SCAN] Portal warm-up attempt ${i + 1} — cookie count=${rawCookies.length} names=[${rawCookies.map((c: any) => c.name).join(", ")}]`);
-
     if (rawCookies.length > 0) {
       const cookieHeader = rawCookies.map((c: any) => `${c.name}=${c.value}`).join("; ");
       _portalCookies = cookieHeader;
-      _portalCookiesFetchedAt = now;
+      _portalCookiesFetchedAt = Date.now();
+      _sessionCooldownUntil = 0;
       return cookieHeader;
-    }
-
-    if (result.status >= 500) {
-      console.warn(`[DIRECT-SCAN] Portal warm-up attempt ${i + 1} — ScrapingBee 500, will retry`);
     }
   }
 
-  console.warn("[DIRECT-SCAN] ABORT — no FLHSMV cookies captured after 3 attempts — not attempting SearchReport");
-  _portalCookies = "";
-  _portalCookiesFetchedAt = 0;
+  console.warn("[FLHSMV-SESSION] ABORT — no FLHSMV cookies captured after all attempts — not attempting SearchReport");
   return "";
+}
+
+async function getPortalCookies(): Promise<string> {
+  const now = Date.now();
+
+  if (_sessionCooldownUntil > now) {
+    const remainSec = Math.ceil((_sessionCooldownUntil - now) / 1000);
+    console.log(`[FLHSMV-SESSION] provider blocked/cooldown — ${remainSec}s remaining`);
+    return "";
+  }
+
+  if (_portalCookies && (now - _portalCookiesFetchedAt) < PORTAL_COOKIE_TTL_MS) {
+    console.log("[FLHSMV-SESSION] using cached cookies");
+    return _portalCookies;
+  }
+
+  if (_sessionFetchInFlight) {
+    console.log("[FLHSMV-SESSION] waiting for in-flight session fetch");
+    return _sessionFetchInFlight;
+  }
+
+  console.log("[FLHSMV-SESSION] singleflight acquired");
+  _sessionFetchInFlight = doFetchPortalCookies()
+    .finally(() => { _sessionFetchInFlight = null; });
+  return _sessionFetchInFlight;
 }
 
 // SWFL personal-injury target counties — all FL agencies in these counties file with FLHSMV
@@ -103,8 +151,10 @@ const SCAN_COUNTIES = ["LEE", "COLLIER", "CHARLOTTE", "SARASOTA", "MANATEE"];
 // Scan the last 14 days on startup to catch any backlogged reports
 const SCAN_DAYS_BACK_INITIAL = 14;
 
-// Scheduled runs only scan the last 3 days (local agencies file within 48h; this gives buffer)
-const SCAN_DAYS_BACK_SCHEDULED = 3;
+// FL law gives agencies 10 days to file a crash report; reports won't appear in the CRR
+// SearchReport API until after that window closes. Scan 14 days back so every run covers
+// at least 4 days of reports that have cleared the filing deadline.
+const SCAN_DAYS_BACK_SCHEDULED = 14;
 
 // Run every 2 hours — catches local agency reports shortly after filing
 const SCAN_INTERVAL_MS = 2 * 60 * 60 * 1000;
@@ -161,12 +211,8 @@ export async function scanCountyDate(
       ReportSection: null, AtFaultDriverLastName: null,
       AtFaultDriverFirstName: null, VehicleVIN: null,
     };
-    // Step 1: grab session cookies from the portal
+    // Step 1: warm the portal and opportunistically collect session cookies.
     const cookieHeader = await getPortalCookies();
-    if (!cookieHeader) {
-      stats.failed++;
-      return stats;
-    }
 
     // Step 2: direct POST to SearchReport with session cookies
     console.log(`[DIRECT-SCAN] Attempting SearchReport POST for ${county}/${dateLabel}`);
@@ -185,8 +231,16 @@ export async function scanCountyDate(
     }, { renderJs: false, countryCode: "us" });
 
     if (!resp.ok) {
-      // If we get 401 the cookies have expired — bust the cache so next call re-fetches
-      if (resp.status === 401) _portalCookiesFetchedAt = 0;
+      if (resp.status === 401) {
+        // Cookies expired — bust cache so next call re-fetches
+        _portalCookies = "";
+        _portalCookiesFetchedAt = 0;
+      }
+      if (resp.status === 429 || resp.status >= 500) {
+        _sessionCooldownUntil = Date.now() + SESSION_COOLDOWN_MS;
+        console.log(`[FLHSMV-SESSION] retry_later not report_failed — HTTP ${resp.status} for ${county}/${dateLabel}`);
+        return stats;
+      }
       console.warn(`[DIRECT-SCAN] FLHSMV returned HTTP ${resp.status} for ${county}/${dateLabel}`);
       stats.failed++;
       return stats;
