@@ -146,7 +146,7 @@ export async function getPortalCookies(): Promise<string> {
 }
 
 // SWFL personal-injury target counties — all FL agencies in these counties file with FLHSMV
-const SCAN_COUNTIES = ["LEE", "COLLIER", "CHARLOTTE", "SARASOTA", "MANATEE"];
+const SCAN_COUNTIES = ["LEE", "COLLIER", "CHARLOTTE"];
 
 // Scan the last 14 days on startup to catch any backlogged reports
 const SCAN_DAYS_BACK_INITIAL = 14;
