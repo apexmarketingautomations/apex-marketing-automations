@@ -59,6 +59,17 @@ export interface ScrapingBeeOptions {
   jsSnippet?: string;
   /** Milliseconds to wait after the JS snippet executes before capturing the DOM */
   waitMs?: number;
+  /** Return full JSON envelope (body, cookies, headers, xhr intercepts) instead of raw HTML */
+  jsonResponse?: boolean;
+}
+
+export interface ScrapingBeeXhr {
+  url: string;
+  method: string;
+  status: number;
+  /** Response body as a string */
+  response: string;
+  headers?: Record<string, string>;
 }
 
 export interface ScrapingBeeResult {
@@ -66,13 +77,17 @@ export interface ScrapingBeeResult {
   /** HTTP status returned by the TARGET site (not ScrapingBee's wrapper status) */
   status: number;
   html: string;
+  /** Cookies set during the page load (only present when jsonResponse=true) */
+  cookies?: Array<{ name: string; value: string; domain?: string; path?: string }>;
+  /** XHR/AJAX requests captured during JS rendering (only present when jsonResponse=true) */
+  xhr?: ScrapingBeeXhr[];
   /** Set when the fetch failed entirely (network error or ScrapingBee API error) */
   error?: string;
 }
 
 // ── URL builder ───────────────────────────────────────────────────────────────
 
-export function buildScrapingBeeUrl(opts: Pick<ScrapingBeeOptions, "url" | "renderJs" | "countryCode" | "mode" | "forwardHeaders" | "blockAds" | "blockResources" | "jsSnippet" | "waitMs">): string {
+export function buildScrapingBeeUrl(opts: Pick<ScrapingBeeOptions, "url" | "renderJs" | "countryCode" | "mode" | "forwardHeaders" | "blockAds" | "blockResources" | "jsSnippet" | "waitMs" | "jsonResponse">): string {
   const key = getKey();
   if (!key) throw new Error("SCRAPINGBEE_API_KEY not set");
 
@@ -90,6 +105,7 @@ export function buildScrapingBeeUrl(opts: Pick<ScrapingBeeOptions, "url" | "rend
   if (opts.blockResources) params.set("block_resources", "true");
   if (opts.jsSnippet)      params.set("js_snippet", opts.jsSnippet);
   if (opts.waitMs)         params.set("wait", String(opts.waitMs));
+  if (opts.jsonResponse)   params.set("json_response", "true");
 
   if (mode === "stealth") {
     params.set("stealth_proxy", "true");
@@ -150,19 +166,45 @@ export async function scrapingBeeFetch(opts: ScrapingBeeOptions): Promise<Scrapi
 
   try {
     const res = await fetch(proxyUrl, init);
-    const html = await res.text();
+    const body = await res.text();
+
+    if (!res.ok) {
+      console.warn(`[SCRAPINGBEE] HTTP ${res.status} fetching ${opts.url}: ${body.slice(0, 200)}`);
+      const targetStatus = res.headers.get("Spb-Status");
+      const status = targetStatus ? parseInt(targetStatus, 10) : res.status;
+      return { ok: false, status, html: body, error: `HTTP ${res.status}` };
+    }
+
+    // json_response=true → ScrapingBee wraps everything in a JSON envelope
+    if (opts.jsonResponse) {
+      try {
+        const envelope = JSON.parse(body) as {
+          body?: string;
+          status_code?: number;
+          cookies?: ScrapingBeeXhr[];
+          xhr?: ScrapingBeeXhr[];
+          [k: string]: unknown;
+        };
+        const html   = envelope.body ?? "";
+        const status = envelope.status_code ?? 200;
+        return {
+          ok:      status < 400,
+          status,
+          html,
+          cookies: (envelope.cookies as any) ?? [],
+          xhr:     envelope.xhr ?? [],
+        };
+      // allow-silent-catch: malformed JSON from ScrapingBee — return error result, nothing useful to log
+      } catch {
+        return { ok: false, status: 0, html: body, error: "json_response parse failed" };
+      }
+    }
 
     // ScrapingBee passes the target's status via the "Spb-Status" response header
     // when forward_headers=true; otherwise we use ScrapingBee's own status code.
     const targetStatus = res.headers.get("Spb-Status");
     const status = targetStatus ? parseInt(targetStatus, 10) : res.status;
-
-    if (!res.ok) {
-      console.warn(`[SCRAPINGBEE] HTTP ${res.status} fetching ${opts.url}: ${html.slice(0, 200)}`);
-      return { ok: false, status, html, error: `HTTP ${res.status}` };
-    }
-
-    return { ok: status < 400, status, html };
+    return { ok: status < 400, status, html: body };
   } catch (err: any) {
     console.error(`[SCRAPINGBEE] Fetch failed for ${opts.url}: ${err.message}`);
     return { ok: false, status: 0, html: "", error: err.message };

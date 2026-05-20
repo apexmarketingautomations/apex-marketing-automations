@@ -109,26 +109,19 @@ export async function scanCountyDate(
     };
     const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64");
 
+    // Fire the SearchReport XHR from within the portal page context so that
+    // session cookies set by the portal are included automatically.
+    // json_response=true lets ScrapingBee intercept and return the XHR response directly.
     const jsSnippet = Buffer.from(`
-      (async () => {
-        try {
-          const r = await fetch('/CRRService/api/CrashReport/SearchReport', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest',
-            },
-            body: atob('${payloadB64}'),
-          });
-          const d = await r.json();
-          document.body.setAttribute('data-apex-status', String(r.status));
-          document.body.setAttribute('data-apex-b64', btoa(unescape(encodeURIComponent(JSON.stringify(d)))));
-        } catch (e) {
-          document.body.setAttribute('data-apex-status', '0');
-          document.body.setAttribute('data-apex-b64', btoa('[]'));
-        }
-      })();
+      fetch('/CRRService/api/CrashReport/SearchReport', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: atob('${payloadB64}'),
+      });
     `).toString("base64");
 
     const rendered = await scrapingBeeFetch({
@@ -137,6 +130,7 @@ export async function scanCountyDate(
       countryCode: "us",
       jsSnippet,
       waitMs: 8000,
+      jsonResponse: true,
     });
 
     if (!rendered.ok) {
@@ -145,22 +139,22 @@ export async function scanCountyDate(
       return stats;
     }
 
-    const statusAttr = rendered.html.match(/data-apex-status="(\d+)"/)?.[1];
-    const apiStatus = parseInt(statusAttr ?? "0", 10);
-    if (apiStatus >= 400) {
-      console.warn(`[DIRECT-SCAN] FLHSMV SearchReport returned HTTP ${apiStatus} for ${county}/${dateLabel}`);
+    // Find the SearchReport XHR response in the captured network calls
+    const searchXhr = rendered.xhr?.find(x =>
+      x.url.includes("SearchReport") || x.url.includes("CrashReport"),
+    );
+    if (!searchXhr) {
+      console.warn(`[DIRECT-SCAN] SearchReport XHR not captured for ${county}/${dateLabel}`);
+      stats.failed++;
+      return stats;
+    }
+    if (searchXhr.status >= 400) {
+      console.warn(`[DIRECT-SCAN] FLHSMV SearchReport returned HTTP ${searchXhr.status} for ${county}/${dateLabel}`);
       stats.failed++;
       return stats;
     }
 
-    const b64Match = rendered.html.match(/data-apex-b64="([A-Za-z0-9+/=]+)"/);
-    if (!b64Match) {
-      console.warn(`[DIRECT-SCAN] JS render: result attribute missing for ${county}/${dateLabel}`);
-      stats.failed++;
-      return stats;
-    }
-
-    const json = JSON.parse(Buffer.from(b64Match[1], "base64").toString("utf8"));
+    const json = JSON.parse(searchXhr.response);
     searchData = Array.isArray(json) ? json : (json?.ReportNumber ? [json] : []);
   } catch (err: any) {
     console.warn(`[DIRECT-SCAN] Error for ${county}/${dateLabel}: ${err.message}`);
