@@ -1293,6 +1293,17 @@ const MIGRATIONS: DataMigration[] = [
     `,
   },
   {
+    name: "2026-05-20-crash-reports-next-attempt-at",
+    sql: `
+      ALTER TABLE crash_reports
+        ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ;
+
+      CREATE INDEX IF NOT EXISTS idx_crash_reports_next_attempt
+        ON crash_reports (next_attempt_at)
+        WHERE status IN ('PENDING', 'RETRY_LATER');
+    `,
+  },
+  {
     name: "2026-05-19-reset-crash-type-names-to-placeholder",
     sql: `
       -- Reset contacts whose first_name contains a crash-type descriptor or

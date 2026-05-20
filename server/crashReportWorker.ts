@@ -582,7 +582,18 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
         : crashDate.replace(/^(\d{2})\/(\d{2})\/(\d{4})$/, "$3-$1-$2");
       const daysOld = (Date.now() - new Date(isoDate).getTime()) / 86_400_000;
       if (daysOld < 10) {
-        console.log(`[CRASH-WORKER] Follow-up ${reportNumber} too recent (${daysOld.toFixed(1)}d old) — deferring, FLHSMV 10-day filing window not closed`);
+        // Schedule retry after crash_date + 10 days + random jitter (0–60 min) to
+        // spread load when a large cohort of same-date crashes all become eligible.
+        const jitterMs = Math.floor(Math.random() * 60 * 60 * 1000);
+        const nextAttemptAt = new Date(new Date(isoDate).getTime() + 10 * 86_400_000 + jitterMs);
+        await storage.updateCrashReport(reportId, {
+          status: "RETRY_LATER",
+          lockedAt: null,
+          lockedBy: null,
+          nextAttemptAt,
+          errorLog: `FLHSMV_10_DAY_WINDOW: crash is ${daysOld.toFixed(1)}d old, retry after ${nextAttemptAt.toISOString()}`,
+        });
+        console.log(`[CRASH-WORKER] deferred report id=${reportId} until=${nextAttemptAt.toISOString()} reason=FLHSMV_10_DAY_WINDOW`);
         return;
       }
 
@@ -1115,20 +1126,21 @@ export function startCrashReportWorker(): void {
         try {
           const histo = await db.execute(sql`
             SELECT
-              COUNT(*) FILTER (WHERE source = 'sentinel_followup' AND status = 'PENDING')::int AS pending_followups,
+              COUNT(*) FILTER (WHERE source = 'sentinel_followup' AND status IN ('PENDING', 'RETRY_LATER'))::int AS pending_followups,
+              COUNT(*) FILTER (WHERE source = 'sentinel_followup' AND status = 'RETRY_LATER')::int AS deferred_followups,
               COUNT(*) FILTER (WHERE source = 'sentinel_followup' AND status = 'PENDING' AND retry_count = 0 AND COALESCE(service_failure_count, 0) > 0)::int AS pending_with_upstream_failures,
               COALESCE(MAX(service_failure_count), 0)::int AS max_service_failures,
               COALESCE(MAX(retry_count), 0)::int AS max_retries
             FROM crash_reports
-            WHERE source = 'sentinel_followup' AND status = 'PENDING'
+            WHERE source = 'sentinel_followup' AND status IN ('PENDING', 'RETRY_LATER')
           `);
           const row = histo.rows?.[0] as
-            | { pending_followups?: number; pending_with_upstream_failures?: number; max_service_failures?: number; max_retries?: number }
+            | { pending_followups?: number; deferred_followups?: number; pending_with_upstream_failures?: number; max_service_failures?: number; max_retries?: number }
             | undefined;
           if (row && (row.pending_followups ?? 0) > 0) {
             console.log(
-              `[CRASH-WORKER] Backlog diag: ${row.pending_followups ?? 0} pending follow-ups, ` +
-              `${row.pending_with_upstream_failures ?? 0} blocked by FLHSMV 5xx (retry_count=0 is expected — upstream errors bump service_failure_count instead). ` +
+              `[CRASH-WORKER] Backlog diag: ${row.pending_followups ?? 0} queued follow-ups ` +
+              `(${row.deferred_followups ?? 0} deferred/RETRY_LATER, ${row.pending_with_upstream_failures ?? 0} blocked by FLHSMV 5xx). ` +
               `max(service_failure_count)=${row.max_service_failures ?? 0}, max(retry_count)=${row.max_retries ?? 0}.`
             );
           }

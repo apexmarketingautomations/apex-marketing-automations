@@ -1859,7 +1859,9 @@ export class DatabaseStorage implements IStorage {
     return await db.transaction(async (tx) => {
       const pending = await tx.execute(sql`
         SELECT id FROM crash_reports
-        WHERE status = 'PENDING' AND locked_at IS NULL
+        WHERE status IN ('PENDING', 'RETRY_LATER')
+          AND locked_at IS NULL
+          AND (next_attempt_at IS NULL OR next_attempt_at <= now())
         ORDER BY created_at ASC
         LIMIT ${limit}
         FOR UPDATE SKIP LOCKED
