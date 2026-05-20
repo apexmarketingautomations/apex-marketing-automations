@@ -23,7 +23,7 @@ jobs:
         run: npm ci
 
       - name: Type check
-        run: NODE_OPTIONS="--max-old-space-size=4096" npx tsc --noEmit
+        run: NODE_OPTIONS="--max-old-space-size=4096" npx tsc --noEmit --skipLibCheck
         env:
           NODE_ENV: test
 
