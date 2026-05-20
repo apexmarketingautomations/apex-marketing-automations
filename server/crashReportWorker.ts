@@ -582,10 +582,19 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
     }
 
     // For sentinel follow-up jobs, use county+date discovery instead of direct report number lookup
-    const isFollowUp = report.source === "sentinel_followup";
+    const isFollowUp   = report.source === "sentinel_followup";
+    const isDirectScan = report.source === "flhsmv_direct_scan";
     let searchResult: SearchResult;
 
-    if (isFollowUp) {
+    if (isDirectScan && report.officialReportNumber) {
+      // We already have the official FLHSMV number from the direct scan discovery.
+      // Skip the search step entirely and go straight to detail fetch.
+      searchResult = {
+        type: "success",
+        data: { ReportNumber: report.officialReportNumber } as FLHSMVSearchResult,
+      };
+      console.log(`[CRASH-WORKER] Direct scan — skipping search, using known officialReportNumber ${report.officialReportNumber}`);
+    } else if (isFollowUp) {
       const meta = report.data as any;
       const county = meta?.county as string | undefined;
       const crashDate = meta?.crashDate as string | undefined;
@@ -654,7 +663,14 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
       return;
     }
 
-    const detail = await fetchReportDetail(reportNumber);
+    // Use the official FLHSMV report number for the detail GET request.
+    // For followup/direct-scan paths the synthetic reportNumber is unknown to FLHSMV;
+    // the real number comes from searchResult (discovered) or report.officialReportNumber (already known).
+    const officialNumForDetail: string =
+      report.officialReportNumber ||
+      (searchResult.type === "success" ? (searchResult.data as FLHSMVSearchResult).ReportNumber : null) ||
+      reportNumber;
+    const detail = await fetchReportDetail(officialNumForDetail);
 
     if (detail.type === "upstream_error" || detail.type === "network_error") {
       const failCount = (report.serviceFailureCount ?? 0) + 1;
@@ -697,14 +713,28 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
       reportData.discoveredReportNumber = (searchResult.data as any)?.ReportNumber ?? null;
     }
 
+    const discoveredOfficialNumber =
+      (searchResult.type === "success" ? (searchResult.data as FLHSMVSearchResult).ReportNumber : null) ||
+      report.officialReportNumber ||
+      null;
+
     await storage.updateCrashReport(reportId, {
       status: "COMPLETED",
       data: reportData,
+      officialReportNumber: discoveredOfficialNumber ?? undefined,
       errorLog: null,
       serviceFailureCount: 0,
     });
 
-    console.log(`[CRASH-WORKER] Report ${reportNumber} completed successfully`);
+    console.log(`[CRASH-WORKER] Report ${reportNumber} completed successfully${discoveredOfficialNumber ? ` (official: ${discoveredOfficialNumber})` : ""}`);
+
+    // For direct scan reports, contacts were never created from a prior CAD signal.
+    // Create them now from the FLHSMV detail so leads are captured immediately.
+    if (isDirectScan && detail.type === "success" && detail.data && report.subAccountId) {
+      createDirectScanContacts(reportId, reportNumber, report.subAccountId, detail.data).catch((err: any) =>
+        console.warn(`[CRASH-WORKER] Direct scan contact creation failed for ${reportNumber}: ${err.message}`)
+      );
+    }
 
     // Report to Apex Intelligence brain (fire-and-forget)
     const detail_data = detail.type === "success" ? detail.data : null;
@@ -1142,6 +1172,107 @@ export function startCrashReportWorker(): void {
 
 // ── Retro FLHSMV Enrichment ───────────────────────────────────────────────────
 //
+// Creates contacts from FLHSMV detail for flhsmv_direct_scan reports.
+// Unlike sentinel_auto, direct scan reports have no prior CAD signal and no
+// placeholder contact — this function creates them from the real driver data.
+async function createDirectScanContacts(
+  reportId: number,
+  reportNumber: string,
+  subAccountId: number,
+  detailData: FLHSMVReportData,
+): Promise<void> {
+  const { getActiveAccountIds } = await import("./crashIngestPipeline");
+  const { ADDRESS_CONFIDENCE, looksLikeHighwayAddress, CONTACT_SOURCES } = await import("./services/contactUpsertService");
+  const accountIds = await getActiveAccountIds();
+
+  for (const vehicle of detailData.Vehicles ?? []) {
+    const driver = vehicle?.Driver;
+    if (!driver?.Name) continue;
+
+    const rawName = driver.Name.trim();
+    let firstName: string;
+    let lastName: string | null = null;
+    if (rawName.includes(",")) {
+      const [last, ...rest] = rawName.split(",").map((s: string) => s.trim());
+      firstName = rest.join(" ") || last;
+      lastName  = rest.length > 0 ? last : null;
+    } else {
+      const parts = rawName.split(/\s+/);
+      firstName = parts[0] ?? rawName;
+      lastName  = parts.slice(1).join(" ") || null;
+    }
+
+    const rawAddr = driver.Address?.trim() || null;
+    const driverAddress = rawAddr && !looksLikeHighwayAddress(rawAddr) ? rawAddr : null;
+
+    const crashLocation = [detailData.CrashStreet, detailData.CrashCity]
+      .filter(Boolean).join(", ") + (detailData.CrashCity ? `, ${detailData.CrashCounty} County, FL` : "");
+
+    const severity = (detailData.TotalFatalities ?? 0) > 0 ? "critical"
+                   : (detailData.TotalInjuries ?? 0) > 0 ? "high" : "medium";
+
+    const tags = ["crash-lead", "flhsmv-enriched", "flhsmv-direct-scan", severity];
+    if (vehicle.TagNumber) tags.push(`plate:${vehicle.TagState ?? "FL"}-${vehicle.TagNumber}`);
+    if (driver.InjuryType) tags.push(`injury:${driver.InjuryType.toLowerCase().replace(/\s+/g, "-")}`);
+
+    const notes = [
+      `Auto-generated from FLHSMV direct scan.`,
+      `Official report: ${detailData.ReportNumber}`,
+      `Crash: ${detailData.CrashDate} ${detailData.CrashTime ?? ""} in ${detailData.CrashCounty}, FL`,
+      `Location: ${crashLocation}`,
+      `Vehicle: ${vehicle.Year ?? ""} ${vehicle.Make ?? ""} ${vehicle.Model ?? ""} | Plate: ${vehicle.TagState ?? "FL"}-${vehicle.TagNumber ?? ""}`.trim(),
+      vehicle.InsuranceCompany ? `Insurance: ${vehicle.InsuranceCompany}` : null,
+      driver.InjuryType ? `Injury type: ${driver.InjuryType}` : null,
+      `Total injuries: ${detailData.TotalInjuries ?? 0} | Fatalities: ${detailData.TotalFatalities ?? 0}`,
+      `Crash report ID: ${reportId} (${reportNumber})`,
+    ].filter(Boolean).join("\n");
+
+    const incidentFingerprint = crypto
+      .createHash("sha256")
+      .update(`crash:${reportNumber}`)
+      .digest("hex");
+
+    for (const accountId of accountIds) {
+      try {
+        await upsertContact({
+          subAccountId:       accountId,
+          firstName,
+          lastName,
+          source:             CONTACT_SOURCES.CRASH,
+          channel:            "sentinel",
+          leadVertical:       "personal_injury",
+          leadSubtype:        "crash",
+          county:             detailData.CrashCounty ?? null,
+          sourceExternalId:   `crash:${reportNumber}:acct${accountId}`,
+          rawSourceType:      "flhsmv_direct_scan",
+          tags,
+          notes,
+          address:            driverAddress,
+          state:              "FL",
+          addressConfidence:  driverAddress ? ADDRESS_CONFIDENCE.FLHSMV_LICENSE : ADDRESS_CONFIDENCE.UNKNOWN,
+          addressType:        driverAddress ? "registration" : "incident_location",
+          addressSource:      driverAddress ? "flhsmv" : null,
+          incidentLocation:   crashLocation || null,
+          incidentLat:        detailData.Latitude ?? null,
+          incidentLng:        detailData.Longitude ?? null,
+          lat:                null,
+          lng:                null,
+          incidentFingerprint,
+          isPlaceholder:      false,
+          viewClass:          "incident_subject",
+          workflowStage:      "enriching",
+          skipTraceStatus:    "not_attempted",
+        } as any);
+      } catch (err: any) {
+        console.warn(`[CRASH-WORKER] Direct scan contact upsert failed for account ${accountId}: ${err.message}`);
+      }
+    }
+  }
+
+  await storage.markCrashReportAsLead(reportId);
+  console.log(`[CRASH-WORKER] Direct scan contacts created for report ${reportNumber} (${detailData.Vehicles?.length ?? 0} vehicle(s))`);
+}
+
 // Called by retroFLHSMVEnrich.ts after fetchReportDetail() succeeds.
 // Finds all contacts linked to the sentinel crash report (via sourceExternalId
 // pattern `crash:<reportNumber>:acct<id>`), skips any already tagged

@@ -1440,6 +1440,51 @@ export function registerRetroSkipTraceRoute(app: any) {
     }
   });
 
+  // ── FLHSMV Direct Scan ────────────────────────────────────────────────────────
+  // POST /api/internal/flhsmv-direct-scan
+  // Admin-secret gated. Manually triggers a FLHSMV county+date discovery scan
+  // to find crash reports from ALL agencies (FHP, LCSO, Cape Coral PD, Fort Myers PD, etc.)
+  // that were filed within the given date window. Creates PENDING crash_reports immediately.
+  //
+  // Body:
+  //   counties     - array of county names (default ["LEE","COLLIER","CHARLOTTE","SARASOTA","MANATEE"])
+  //   daysBack     - how many days of history to scan (default 14, max 90)
+  //   subAccountId - optional: which account to attach records to (auto-detected if omitted)
+  //   dryRun       - if true, counts only — no DB writes
+
+  app.post("/api/internal/flhsmv-direct-scan", async (req: any, res: any) => {
+    try {
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured" });
+      const headerVal = ((req.headers["x-admin-secret"] as string) || "").trim();
+      if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+
+      const daysBack = Math.min(Number(req.body?.daysBack ?? 14), 90);
+      const dryRun   = req.body?.dryRun === true;
+      const subAccountId = req.body?.subAccountId ? Number(req.body.subAccountId) : undefined;
+
+      const defaultCounties = ["LEE", "COLLIER", "CHARLOTTE", "SARASOTA", "MANATEE"];
+      let counties: string[] = defaultCounties;
+      if (Array.isArray(req.body?.counties) && req.body.counties.length > 0) {
+        counties = req.body.counties.map((c: string) => String(c).toUpperCase()).filter(Boolean);
+      }
+
+      const { runDirectScan } = await import("../flhsmvDirectScan");
+
+      // Fire-and-forget — can take several minutes for large date ranges
+      runDirectScan({ counties, daysBack, subAccountId, dryRun }).catch((err: any) =>
+        console.error("[DIRECT-SCAN] Unhandled error in background job:", err?.message)
+      );
+
+      res.json({
+        ok: true,
+        message: `FLHSMV direct scan started — counties=${counties.join(",")} daysBack=${daysBack} dryRun=${dryRun}. Check server logs for progress.`,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ── Pipeline Health ───────────────────────────────────────────────────────────
   // GET /api/internal/pipeline-health
   // Admin-secret gated. Returns current status of all pipeline subsystems.

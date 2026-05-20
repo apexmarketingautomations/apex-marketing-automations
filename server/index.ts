@@ -840,6 +840,14 @@ async function validateMetaCredentials() {
   } catch (followupErr: any) {
     console.error("[STARTUP] Sentinel follow-up scheduler failed to start (non-fatal):", followupErr?.message);
   }
+
+  try {
+    const { startFLHSMVDirectScanScheduler } = await import("./flhsmvDirectScan");
+    startFLHSMVDirectScanScheduler();
+    console.log("[STARTUP] ✅ FLHSMV direct scan scheduler started — discovers local agency crashes (Cape Coral PD, Fort Myers PD, etc.) every 2h");
+  } catch (directScanErr: any) {
+    console.error("[STARTUP] FLHSMV direct scan scheduler failed to start (non-fatal):", directScanErr?.message);
+  }
   }
 
   // Phase 11 — Enterprise Control Center startup
