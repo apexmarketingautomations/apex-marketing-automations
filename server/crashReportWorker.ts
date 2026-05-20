@@ -5,6 +5,7 @@ import crypto from "crypto";
 import { contacts } from "@shared/schema";
 import { upsertContact, CONTACT_SOURCES, isPlaceholderName } from "./services/contactUpsertService";
 import { proxiedFetch } from "./scrapingBeeClient";
+import { getPortalCookies, bustSessionCache } from "./flhsmvDirectScan";
 
 const FLHSMV_BASE = "https://services.flhsmv.gov";
 const FLHSMV_HOME = `${FLHSMV_BASE}/crashreportrequest/`;
@@ -30,7 +31,6 @@ const MAX_CONCURRENT = 5;
 const MAX_BATCHES_PER_TICK = 50;
 // Small pause between batches so we are not hammering FLHSMV back-to-back.
 const INTER_BATCH_DELAY_MS = 500;
-const SESSION_TTL_MS = 5 * 60 * 1000;
 const STUCK_JOB_TIMEOUT_MINUTES = 15;
 const WORKER_ID = crypto.randomUUID().slice(0, 8);
 
@@ -107,8 +107,9 @@ type DetailResultUpstreamError = { type: "upstream_error"; statusCode: number; m
 type DetailResultNetworkError = { type: "network_error"; message: string };
 type DetailResult = DetailResultSuccess | DetailResultUpstreamError | DetailResultNetworkError;
 
+// Session state is owned by flhsmvDirectScan — single-flight + cooldown live there.
+// This local variable caches the last resolved value for sync access in getHeaders().
 let sessionCookies: string = "";
-let sessionTimestamp: number = 0;
 
 interface FLHSMVHealthStatus {
   status: "ok" | "degraded" | "blocked" | "down";
@@ -168,50 +169,11 @@ export function getFLHSMVHealth(): FLHSMVHealthStatus {
   return { ...healthStatus };
 }
 
-function parseCookies(response: Response): string {
-  const raw = response.headers.getSetCookie?.() ?? [];
-  if (raw.length === 0) {
-    const single = response.headers.get("set-cookie");
-    if (single) return single.split(";")[0];
-    return "";
-  }
-  return raw.map(c => c.split(";")[0]).join("; ");
-}
-
 async function refreshSession(): Promise<void> {
-  const now = Date.now();
-  if (sessionCookies && (now - sessionTimestamp) < SESSION_TTL_MS) return;
-
-  try {
-    console.log("[CRASH-WORKER] Refreshing FLHSMV session cookies...");
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15_000);
-
-    const response = await flhsmvFetch(FLHSMV_HOME, {
-      method: "GET",
-      headers: {
-        "User-Agent": getNextUserAgent(),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-      },
-      signal: controller.signal,
-      redirect: "follow",
-    });
-    clearTimeout(timeout);
-
-    const cookies = parseCookies(response);
-    if (cookies) {
-      sessionCookies = cookies;
-      sessionTimestamp = now;
-      console.log("[CRASH-WORKER] Session cookies acquired");
-    } else {
-      sessionTimestamp = now;
-      console.log("[CRASH-WORKER] No cookies returned, proceeding without");
-    }
-  } catch (err: any) {
-    console.warn("[CRASH-WORKER] Session refresh failed:", err.message);
-    sessionTimestamp = Date.now();
-  }
+  // Delegates to the shared single-flight + cooldown implementation in flhsmvDirectScan.
+  // Multiple concurrent workers will wait on the same Promise rather than each firing
+  // a separate ScrapingBee call.
+  sessionCookies = await getPortalCookies();
 }
 
 function getHeaders(): Record<string, string> {
@@ -249,8 +211,8 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = 2): P
 
       if (response.status === 401 || response.status === 403) {
         console.warn(`[CRASH-WORKER] Got ${response.status}, forcing session refresh`);
+        bustSessionCache();
         sessionCookies = "";
-        sessionTimestamp = 0;
         await refreshSession();
         if (attempt < retries) {
           continue;

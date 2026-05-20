@@ -120,7 +120,7 @@ async function doFetchPortalCookies(): Promise<string> {
   return "";
 }
 
-async function getPortalCookies(): Promise<string> {
+export async function getPortalCookies(): Promise<string> {
   const now = Date.now();
 
   if (_sessionCooldownUntil > now) {
