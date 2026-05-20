@@ -54,9 +54,11 @@ async function getPortalCookies(): Promise<string> {
   }
   const result = await scrapingBeeFetch({
     url: FLHSMV_PORTAL_URL,
-    renderJs: false,
+    renderJs: true,
     countryCode: "us",
     jsonResponse: true,
+    blockResources: true, // block images/fonts to prevent renderer OOM
+    waitMs: 3000,
   });
   const cookies = (result.cookies ?? []).map((c: any) => `${c.name}=${c.value}`).join("; ");
   _portalCookies = cookies;
