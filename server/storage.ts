@@ -1871,7 +1871,7 @@ export class DatabaseStorage implements IStorage {
           LIMIT ${limit}
           FOR UPDATE SKIP LOCKED
         `);
-      } catch {
+      } catch { // allow-silent-catch: next_attempt_at column may not exist on older DB; fall back to PENDING-only query without it
         pending = await tx.execute(sql`
           SELECT id FROM crash_reports
           WHERE status = 'PENDING'
