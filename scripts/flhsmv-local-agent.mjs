@@ -109,7 +109,10 @@ for name, enc in rows:
     dec = cipher.decrypt(enc_bytes[3:])
     pad = dec[-1]
     if 1 <= pad <= 16: dec = dec[:-pad]
-    parts.append(f"{name}={dec.decode('utf-8', errors='replace')}")
+    # latin-1 maps all 256 bytes 1:1 — never fails. Then strip non-printable-ASCII
+    # so the cookie header stays within 0x20-0x7E (Node.js fetch ByteString limit).
+    val = ''.join(c for c in dec.decode('latin-1') if 0x20 <= ord(c) <= 0x7E)
+    parts.append(f"{name}={val}")
 
 print("COOKIES:" + "; ".join(parts), flush=True)
 `;
@@ -279,7 +282,9 @@ async function main() {
     const stats = statSync(COOKIE_CACHE);
     const ageMs = Date.now() - stats.mtimeMs;
     if (ageMs < COOKIE_MAX_AGE_MS) {
-      const cached = readFileSync(COOKIE_CACHE, "utf8").trim();
+      const raw = readFileSync(COOKIE_CACHE, "utf8").trim();
+      // Strip any non-printable-ASCII chars that would fail Node.js fetch ByteString validation
+      const cached = raw.replace(/[^\x20-\x7E]/g, "");
       if (cached.includes("ASP.NET_SessionId")) {
         cookie = cached;
         cookieSource = `cache (${Math.round(ageMs / 60_000)}m old)`;

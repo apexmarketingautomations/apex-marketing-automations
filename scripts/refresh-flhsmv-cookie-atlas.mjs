@@ -110,7 +110,10 @@ for name, enc in rows:
     pad = dec[-1]
     if 1 <= pad <= 16:
         dec = dec[:-pad]
-    parts.append(f"{name}={dec.decode('utf-8', errors='replace')}")
+    # latin-1 maps all 256 bytes 1:1 — never fails. Then strip non-printable-ASCII
+    # so the cookie header stays within 0x20-0x7E (Node.js fetch ByteString limit).
+    val = ''.join(c for c in dec.decode('latin-1') if 0x20 <= ord(c) <= 0x7E)
+    parts.append(f"{name}={val}")
 
 print("COOKIES:" + "; ".join(parts), flush=True)
 `;
