@@ -19,6 +19,7 @@
  */
 
 import { execFileSync } from "child_process";
+import { readFileSync, statSync } from "fs";
 
 const RAILWAY_URL   = "https://apexmarketingautomations.com";
 const ADMIN_SECRET  = "201120062017";
@@ -29,6 +30,11 @@ const BATCH_LIMIT   = 5;
 const MIN_SCORE     = 20;
 const TIMEOUT_MS    = 30_000;
 const INTER_DELAY   = 600; // ms between reports
+// Cookie written by refresh-flhsmv-cookie-atlas.mjs after each successful Atlas extraction.
+// We read from here to avoid the keychain ETIMEDOUT that occurs in launchd context.
+const COOKIE_CACHE  = "/tmp/flhsmv-atlas-cookie.txt";
+// If the cache is older than 25 min, the session has likely expired.
+const COOKIE_MAX_AGE_MS = 25 * 60 * 1000;
 
 function log(msg) {
   const t = new Date().toTimeString().slice(0, 8);
@@ -265,15 +271,39 @@ async function flhsmvDetail(reportNumber, cookie) {
 async function main() {
   log("=== FLHSMV Local Agent ===");
 
-  // Step 1: Get session cookie from Atlas
-  log("Extracting Atlas session cookie...");
-  const cookie = getAtlasCookie();
+  // Step 1: Get session cookie — prefer the cache file written by the refresher.
+  // Fall back to live Atlas extraction only if the cache is missing or stale.
+  let cookie = null;
+  let cookieSource = "none";
+  try {
+    const stats = statSync(COOKIE_CACHE);
+    const ageMs = Date.now() - stats.mtimeMs;
+    if (ageMs < COOKIE_MAX_AGE_MS) {
+      const cached = readFileSync(COOKIE_CACHE, "utf8").trim();
+      if (cached.includes("ASP.NET_SessionId")) {
+        cookie = cached;
+        cookieSource = `cache (${Math.round(ageMs / 60_000)}m old)`;
+      } else {
+        log("Cache exists but no ASP.NET_SessionId — falling back to live extraction");
+      }
+    } else {
+      log(`Cache is ${Math.round(ageMs / 60_000)}m old (> ${COOKIE_MAX_AGE_MS / 60_000}m) — falling back to live extraction`);
+    }
+  } catch {
+    log("No cookie cache file yet — attempting live extraction from Atlas");
+  }
+
   if (!cookie) {
-    log("ERROR: No valid Atlas session cookie. Open https://services.flhsmv.gov/crashreportrequest/ in Atlas first, then retry.");
+    log("Extracting Atlas session cookie directly...");
+    cookie = getAtlasCookie();
+  }
+
+  if (!cookie) {
+    log("ERROR: No valid Atlas session cookie. Run refresh-flhsmv-cookie-atlas.mjs from Terminal first (needs keychain approval), or open FLHSMV in Atlas and wait for the refresher to cache.");
     process.exit(1);
   }
   const cookieNames = cookie.split("; ").map(p => p.split("=")[0]).join(", ");
-  log(`Cookie extracted: ${cookieNames}`);
+  log(`Cookie ready [${cookieSource}]: ${cookieNames}`);
 
   // Step 2: Claim pending batch from Railway
   log(`Fetching pending batch (limit=${BATCH_LIMIT}) from Railway...`);
