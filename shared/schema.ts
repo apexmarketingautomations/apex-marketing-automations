@@ -1622,6 +1622,39 @@ export const insertDigitalCardSchema = createInsertSchema(digitalCards).omit({ i
 export type InsertDigitalCard = z.infer<typeof insertDigitalCardSchema>;
 export type DigitalCard = typeof digitalCards.$inferSelect;
 
+export const policeReportDocuments = pgTable("police_report_documents", {
+  id: serial("id").primaryKey(),
+  subAccountId: integer("sub_account_id").references(() => subAccounts.id).notNull(),
+  officialReportNumber: text("official_report_number").notNull(),
+  status: text("status").default("PENDING").notNull(),
+  source: text("source").default("local_agent").notNull(),
+  storageMode: text("storage_mode").default("local_uploads").notNull(),
+  storagePath: text("storage_path"),
+  fileName: text("file_name"),
+  mimeType: text("mime_type"),
+  sha256: text("sha256"),
+  byteSize: integer("byte_size"),
+  attemptCount: integer("attempt_count").default(0).notNull(),
+  lastAttemptAt: timestamp("last_attempt_at"),
+  nextAttemptAt: timestamp("next_attempt_at"),
+  fetchedAt: timestamp("fetched_at"),
+  lockedAt: timestamp("locked_at"),
+  lockedBy: text("locked_by"),
+  errorLog: text("error_log"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  reportUniq: uniqueIndex("police_report_documents_sub_account_official_uniq")
+    .on(table.subAccountId, table.officialReportNumber),
+  statusIdx: index("police_report_documents_status_idx").on(table.status),
+  nextAttemptIdx: index("police_report_documents_next_attempt_idx").on(table.nextAttemptAt),
+}));
+
+export const insertPoliceReportDocumentSchema = createInsertSchema(policeReportDocuments).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertPoliceReportDocument = z.infer<typeof insertPoliceReportDocumentSchema>;
+export type PoliceReportDocument = typeof policeReportDocuments.$inferSelect;
+
 export const crashReports = pgTable("crash_reports", {
   id: serial("id").primaryKey(),
   // Synthetic dedup hash (SENTINEL-<sha256> or FLHSMV-FOLLOWUP-<id>). Never shown to users as the
@@ -1630,6 +1663,7 @@ export const crashReports = pgTable("crash_reports", {
   // Official Florida HSMV-issued crash report number (e.g. "FL-20260415-001234").
   // Populated by the crash report worker once FLHSMV confirms the record. Null until then.
   officialReportNumber: text("official_report_number"),
+  policeReportDocumentId: integer("police_report_document_id").references(() => policeReportDocuments.id),
   status: text("status").default("PENDING").notNull(),
   requesterRole: text("requester_role"),
   reason: text("reason"),

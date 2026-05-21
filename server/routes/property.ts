@@ -1571,8 +1571,29 @@ export function registerPropertyRoutes(app: Express) {
       });
     }
 
+    const { findStoredPoliceReportByCrashReport, persistPoliceReportBinary } = await import("../policeReportDocuments");
+    const storedDocument = await findStoredPoliceReportByCrashReport({
+      policeReportDocumentId: (report as any).policeReportDocumentId ?? null,
+      subAccountId: report.subAccountId,
+      officialReportNumber:
+        (report as any).officialReportNumber ??
+        (report.data as any)?.officialFlhsmv?.reportNumber ??
+        (report.data as any)?.searchResult?.ReportNumber ??
+        (report.data as any)?.detail?.ReportNumber ??
+        null,
+    });
+
+    if (storedDocument?.storagePath) {
+      const downloadName = storedDocument.fileName || `police-report-${storedDocument.officialReportNumber}.pdf`;
+      res.setHeader("Content-Type", storedDocument.mimeType || "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${downloadName}"`);
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.sendFile(storedDocument.storagePath);
+    }
+
     const officialReportNumber: string | undefined =
       (report as any).officialReportNumber ??
+      (report.data as any)?.officialFlhsmv?.reportNumber ??
       (report.data as any)?.searchResult?.ReportNumber ??
       (report.data as any)?.detail?.ReportNumber;
 
@@ -1587,6 +1608,24 @@ export function registerPropertyRoutes(app: Express) {
 
     if (result.type === "success") {
       const safeName = String(officialReportNumber).replace(/[^A-Z0-9._-]/gi, "_");
+      if (report.subAccountId) {
+        try {
+          await persistPoliceReportBinary({
+            subAccountId: report.subAccountId,
+            officialReportNumber,
+            buffer: result.buffer,
+            mimeType: result.isZip ? "application/zip" : "application/pdf",
+            originalFilename: result.isZip ? `police-report-${safeName}.zip` : `police-report-${safeName}.pdf`,
+            source: "live_route_fetch",
+            metadata: {
+              crashReportId: report.id,
+              fetchedVia: "api_crash_reports_pdf_route",
+            },
+          });
+        } catch (persistErr: any) {
+          console.warn(`[CRASH-REPORT-PDF] Failed to persist ${officialReportNumber}: ${persistErr.message}`);
+        }
+      }
       if (result.isZip) {
         res.setHeader("Content-Type", "application/zip");
         res.setHeader("Content-Disposition", `attachment; filename="police-report-${safeName}.zip"`);

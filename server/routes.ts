@@ -1,5 +1,6 @@
 // @ts-nocheck
 import type { Express } from "express";
+import multer from "multer";
 import { createServer, type Server } from "http";
 import { asyncHandler, requireAdmin } from "./routes/helpers";
 
@@ -65,6 +66,11 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  const policeReportUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 25 * 1024 * 1024 },
+  });
+
   // Internal admin route — before all auth middleware
   app.post("/api/internal/retro-skip-trace", async (req: any, res: any) => {
     try {
@@ -329,6 +335,25 @@ export async function registerRoutes(
     }
   });
 
+  // Police report local agent — step 1: claim completed crash reports that now
+  // have an official FLHSMV number but still need the PDF pulled from a local,
+  // residential browser session.
+  app.get("/api/admin/police-report-pending-batch", async (req: any, res: any) => {
+    try {
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured" });
+      const headerVal = ((req.headers["x-admin-secret"] as string) || "").trim();
+      if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+
+      const limit = Math.min(Number(req.query.limit ?? 5), 20);
+      const { claimPendingPoliceReportBatch } = await import("./policeReportDocuments");
+      const jobs = await claimPendingPoliceReportBatch(limit);
+      res.json({ ok: true, jobs, count: jobs.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // FLHSMV local agent — step 2: receive results from the Mac and complete the reports.
   // The Mac has already called FLHSMV SearchReport + GetReport via its residential IP.
   app.post("/api/admin/flhsmv-batch-result", async (req: any, res: any) => {
@@ -362,6 +387,122 @@ export async function registerRoutes(
         } catch (err: any) {
           outcomes.push({ crashReportId, ok: false, error: err.message });
         }
+      }
+
+      res.json({ ok: true, processed: outcomes.length, outcomes });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Police report local agent — step 2a: upload the fetched PDF/ZIP from the Mac.
+  app.post("/api/admin/police-report-upload", (req: any, res: any, next: any) => {
+    const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+    const headerVal = ((req.headers["x-admin-secret"] as string) || "").trim();
+    if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured" });
+    if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+
+    policeReportUpload.single("file")(req, res, (err: any) => {
+      if (err) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({ error: "Police report file exceeds 25MB limit" });
+        }
+        return res.status(400).json({ error: err.message || "Upload error" });
+      }
+      next();
+    });
+  }, async (req: any, res: any) => {
+    try {
+      const file = req.file as Express.Multer.File | undefined;
+      if (!file) return res.status(400).json({ error: "Missing file upload" });
+
+      const crashReportId = req.body?.crashReportId ? Number(req.body.crashReportId) : null;
+      const providedOfficial = String(req.body?.officialReportNumber ?? "").trim() || null;
+      const providedSubAccountId = req.body?.subAccountId ? Number(req.body.subAccountId) : null;
+      const source = String(req.body?.source ?? "local_agent").trim() || "local_agent";
+
+      let subAccountId = providedSubAccountId;
+      let officialReportNumber = providedOfficial;
+
+      if (crashReportId && (!subAccountId || !officialReportNumber)) {
+        const { storage } = await import("./storage");
+        const report = await storage.getCrashReport(crashReportId);
+        if (!report) return res.status(404).json({ error: "Crash report not found" });
+        subAccountId = subAccountId || report.subAccountId || null;
+        officialReportNumber =
+          officialReportNumber ||
+          report.officialReportNumber ||
+          report.data?.officialFlhsmv?.reportNumber ||
+          report.data?.searchResult?.ReportNumber ||
+          report.data?.detail?.ReportNumber ||
+          null;
+      }
+
+      if (!subAccountId || !officialReportNumber) {
+        return res.status(400).json({ error: "subAccountId and officialReportNumber are required (or supply a crashReportId that resolves both)" });
+      }
+
+      const { persistPoliceReportBinary } = await import("./policeReportDocuments");
+      const saved = await persistPoliceReportBinary({
+        subAccountId,
+        officialReportNumber,
+        buffer: file.buffer,
+        mimeType: file.mimetype,
+        originalFilename: file.originalname,
+        source,
+        metadata: {
+          uploadedAt: new Date().toISOString(),
+          uploadedBy: source,
+          crashReportId,
+        },
+      });
+
+      res.json({
+        ok: true,
+        documentId: saved.document.id,
+        linkedCrashReportIds: saved.linkedCrashReportIds,
+        fileUrl: saved.fileUrl,
+        status: saved.document.status,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Police report local agent — step 2b: mark a fetch attempt as retryable or failed
+  // when the Mac could not retrieve a PDF from FLHSMV yet.
+  app.post("/api/admin/police-report-batch-result", async (req: any, res: any) => {
+    try {
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured" });
+      const headerVal = ((req.headers["x-admin-secret"] as string) || "").trim();
+      if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+
+      const results = Array.isArray(req.body?.results) ? req.body.results : [];
+      if (results.length === 0) {
+        return res.status(400).json({ error: "Body must include { results: [...] }" });
+      }
+
+      const { recordPoliceReportFetchFailure } = await import("./policeReportDocuments");
+      const outcomes = [];
+      for (const result of results) {
+        const type = String(result?.type ?? "");
+        if (!["not_found", "upstream_error", "network_error"].includes(type)) {
+          outcomes.push({ ok: false, reason: "invalid type", input: result });
+          continue;
+        }
+
+        const outcome = await recordPoliceReportFetchFailure({
+          crashReportId: result?.crashReportId ? Number(result.crashReportId) : null,
+          subAccountId: result?.subAccountId ? Number(result.subAccountId) : null,
+          officialReportNumber: result?.officialReportNumber ? String(result.officialReportNumber) : null,
+          type,
+          statusCode: result?.statusCode ? Number(result.statusCode) : null,
+          errorMessage: result?.errorMessage ? String(result.errorMessage) : null,
+          retryAfterMinutes: result?.retryAfterMinutes ? Number(result.retryAfterMinutes) : null,
+          source: result?.source ? String(result.source) : "local_agent",
+        });
+        outcomes.push(outcome);
       }
 
       res.json({ ok: true, processed: outcomes.length, outcomes });
