@@ -255,6 +255,114 @@ export async function registerRoutes(
     }
   });
 
+  // FLHSMV local agent — step 1: claim a batch of eligible sentinel_followup reports
+  // for the Mac to process through its residential IP (Akamai cannot block it).
+  // Locks the returned rows immediately so Railway's own worker won't double-process.
+  app.get("/api/admin/flhsmv-pending-batch", async (req: any, res: any) => {
+    try {
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured" });
+      const headerVal = ((req.headers["x-admin-secret"] as string) || "").trim();
+      if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+
+      const limit = Math.min(Number(req.query.limit ?? 5), 20);
+      const { db } = await import("./db");
+      const { sql } = await import("drizzle-orm");
+
+      // Claim eligible reports: sentinel_followup, PENDING/RETRY_LATER, unlocked,
+      // next_attempt_at passed, and crashDate ≥ 10 days ago (FLHSMV window).
+      // Uses a CTE + UPDATE RETURNING so the lock and return are atomic.
+      const rows = await db.execute<any>(sql`
+        WITH eligible AS (
+          SELECT id, report_number, data, sub_account_id
+          FROM crash_reports
+          WHERE source = 'sentinel_followup'
+            AND status IN ('PENDING', 'RETRY_LATER')
+            AND locked_at IS NULL
+            AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
+            AND (
+              CASE
+                WHEN data->>'crashDate' ~ '^\d{4}-\d{2}-\d{2}$'
+                  THEN (data->>'crashDate')::date
+                WHEN data->>'crashDate' ~ '^\d{2}/\d{2}/\d{4}$'
+                  THEN TO_DATE(data->>'crashDate', 'MM/DD/YYYY')
+                ELSE NULL
+              END
+            ) <= CURRENT_DATE - INTERVAL '10 days'
+          ORDER BY created_at ASC
+          LIMIT ${limit}
+          FOR UPDATE SKIP LOCKED
+        )
+        UPDATE crash_reports cr
+        SET locked_at = NOW(),
+            locked_by = 'local-agent',
+            status    = 'PROCESSING',
+            updated_at = NOW()
+        FROM eligible
+        WHERE cr.id = eligible.id
+        RETURNING cr.id, cr.report_number, cr.data, cr.sub_account_id
+      `);
+
+      const rawRows: any[] = Array.isArray(rows) ? rows : (rows as any).rows ?? [];
+      const reports = rawRows.map((r: any) => ({
+        id:           r.id,
+        reportNumber: r.report_number,
+        county:       r.data?.county    ?? null,
+        crashDate:    r.data?.crashDate ?? null,
+        location:     r.data?.location  ?? null,
+        lat:          r.data?.lat       ?? null,
+        lng:          r.data?.lng       ?? null,
+        received:     r.data?.received  ?? null,
+        subAccountId: r.sub_account_id,
+      }));
+
+      res.json({ ok: true, reports, count: reports.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // FLHSMV local agent — step 2: receive results from the Mac and complete the reports.
+  // The Mac has already called FLHSMV SearchReport + GetReport via its residential IP.
+  app.post("/api/admin/flhsmv-batch-result", async (req: any, res: any) => {
+    try {
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured" });
+      const headerVal = ((req.headers["x-admin-secret"] as string) || "").trim();
+      if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+
+      const { results } = req.body ?? {};
+      if (!Array.isArray(results) || results.length === 0) {
+        return res.status(400).json({ error: "Body must include { results: [...] }" });
+      }
+
+      const { completeReportFromExternalData } = await import("./crashReportWorker");
+
+      const outcomes: any[] = [];
+      for (const r of results) {
+        const { crashReportId, reportNumber, type, searchResult, detail, statusCode, errorMessage } = r;
+        if (!crashReportId || !type) {
+          outcomes.push({ crashReportId, ok: false, error: "missing crashReportId or type" });
+          continue;
+        }
+        try {
+          const result = await completeReportFromExternalData(
+            Number(crashReportId),
+            reportNumber ?? String(crashReportId),
+            { type, searchResult, detail, statusCode, errorMessage }
+          );
+          outcomes.push({ crashReportId, ...result });
+        } catch (err: any) {
+          outcomes.push({ crashReportId, ok: false, error: err.message });
+        }
+      }
+
+      res.json({ ok: true, processed: outcomes.length, outcomes });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   registerAuthRoutes(app);
   registerCardIdentityRoutes(app);
   registerDynamicPagesRoutes(app);

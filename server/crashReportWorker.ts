@@ -939,6 +939,173 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
   }
 }
 
+/**
+ * Complete a crash report using externally-fetched FLHSMV data.
+ * Called by the Railway batch-result endpoint after the Mac local agent has
+ * performed the FLHSMV API calls through a residential IP (bypassing Akamai).
+ */
+export async function completeReportFromExternalData(
+  reportId: number,
+  reportNumber: string,
+  outcome: {
+    type: "success" | "not_found" | "upstream_error" | "network_error";
+    searchResult?: FLHSMVSearchResult;
+    detail?: FLHSMVReportData;
+    statusCode?: number;
+    errorMessage?: string;
+  }
+): Promise<{ ok: boolean; action: string }> {
+  const report = await storage.getCrashReport(reportId);
+  if (!report) return { ok: false, action: "report_not_found" };
+
+  const isFollowUp = report.source === "sentinel_followup";
+
+  if (outcome.type === "not_found") {
+    const attemptNumber = (report.retryCount ?? 0) + 1;
+    if (attemptNumber < MAX_RETRIES) {
+      await storage.updateCrashReport(reportId, {
+        status: "PENDING", lockedAt: null, lockedBy: null,
+        retryCount: attemptNumber,
+        errorLog: `[local-agent] Attempt ${attemptNumber}/${MAX_RETRIES}: not found in FLHSMV. Will retry.`,
+      });
+      return { ok: true, action: "retry" };
+    }
+    await storage.updateCrashReport(reportId, {
+      status: "NOT_FOUND", lockedAt: null, lockedBy: null,
+      retryCount: attemptNumber,
+      errorLog: `[local-agent] Not found after ${MAX_RETRIES} attempts.`,
+    });
+    return { ok: true, action: "not_found" };
+  }
+
+  if (outcome.type === "upstream_error" || outcome.type === "network_error") {
+    const failCount = (report.serviceFailureCount ?? 0) + 1;
+    const errorMsg = outcome.errorMessage ?? `HTTP ${outcome.statusCode ?? 0}`;
+    if (failCount >= MAX_SERVICE_FAILURES) {
+      await storage.updateCrashReport(reportId, {
+        status: "FAILED", lockedAt: null, lockedBy: null,
+        serviceFailureCount: failCount,
+        errorLog: `[local-agent] Service unreachable after ${failCount} attempts: ${errorMsg}`,
+      });
+      return { ok: true, action: "failed" };
+    }
+    await storage.updateCrashReport(reportId, {
+      status: "PENDING", lockedAt: null, lockedBy: null,
+      serviceFailureCount: failCount,
+      errorLog: `[local-agent] Service failure ${failCount}/${MAX_SERVICE_FAILURES}: ${errorMsg}`,
+    });
+    return { ok: true, action: "service_failure_retry" };
+  }
+
+  // success path
+  const searchResult = outcome.searchResult;
+  if (!searchResult) return { ok: false, action: "missing_search_result" };
+
+  const reportData: Record<string, any> = {
+    searchResult,
+    detail: outcome.detail ?? null,
+    fetchedAt: new Date().toISOString(),
+    source: "FLHSMV_LOCAL_AGENT",
+  };
+
+  if (isFollowUp) {
+    const meta = report.data as any;
+    reportData.sentinelReportId        = meta?.sentinelReportId ?? null;
+    reportData.sentinelReportNumber    = meta?.sentinelReportNumber ?? null;
+    reportData.fhpIncidentId           = meta?.fhpIncidentId ?? null;
+    reportData.discoveredVia           = "county_date_search_local_agent";
+    reportData.discoveredReportNumber  = searchResult.ReportNumber ?? null;
+  }
+
+  const discoveredOfficialNumber = searchResult.ReportNumber || report.officialReportNumber || null;
+
+  await storage.updateCrashReport(reportId, {
+    status: "COMPLETED",
+    lockedAt: null,
+    lockedBy: null,
+    data: reportData,
+    officialReportNumber: discoveredOfficialNumber ?? undefined,
+    errorLog: null,
+    serviceFailureCount: 0,
+  });
+
+  console.log(`[LOCAL-AGENT] Report ${reportNumber} (id=${reportId}) completed${discoveredOfficialNumber ? ` — official: ${discoveredOfficialNumber}` : ""}`);
+
+  // Stamp the sentinel parent if this is a follow-up (same logic as processReport)
+  if (isFollowUp) {
+    const meta = report.data as any;
+    const sentinelReportId     = meta?.sentinelReportId;
+    const sentinelReportNumber = meta?.sentinelReportNumber;
+
+    if (typeof sentinelReportId === "number" && sentinelReportId > 0) {
+      try {
+        const parent = await storage.getCrashReport(sentinelReportId);
+        const subAccountMismatch = report.subAccountId != null && parent?.subAccountId != null && parent.subAccountId !== report.subAccountId;
+        const numberMismatch = sentinelReportNumber && parent?.reportNumber && parent.reportNumber !== sentinelReportNumber;
+
+        if (!parent) {
+          await storage.updateCrashReport(reportId, { errorLog: `[LINK-FAILED] Parent ${sentinelReportId} not found` });
+        } else if (parent.source !== "sentinel_auto") {
+          await storage.updateCrashReport(reportId, { errorLog: `[LINK-FAILED] Parent source=${parent.source} expected sentinel_auto` });
+        } else if (subAccountMismatch) {
+          await storage.updateCrashReport(reportId, { errorLog: `[LINK-FAILED] Sub-account mismatch parent=${parent.subAccountId} followup=${report.subAccountId}` });
+        } else if (numberMismatch) {
+          await storage.updateCrashReport(reportId, { errorLog: `[LINK-FAILED] Parent reportNumber drifted` });
+        } else {
+          const merged = await storage.mergeCrashReportData(
+            sentinelReportId,
+            {
+              officialFlhsmv: {
+                reportNumber: discoveredOfficialNumber,
+                searchResult,
+                detail: outcome.detail ?? null,
+                fetchedAt: new Date().toISOString(),
+                followUpReportId: reportId,
+                source: "local_agent",
+              },
+            },
+            {
+              expectSource: "sentinel_auto",
+              ...(report.subAccountId != null ? { expectSubAccountId: report.subAccountId } : {}),
+              setStatus: "COMPLETED",
+            }
+          );
+
+          if (merged) {
+            console.log(`[LOCAL-AGENT] Linked ${discoveredOfficialNumber} → sentinel parent ${sentinelReportId}`);
+
+            // Sibling fan-out
+            const rawSiblings: unknown = meta?.siblingSentinelReportIds;
+            const siblingIds: number[] = Array.isArray(rawSiblings)
+              ? rawSiblings.filter((x: unknown): x is number => typeof x === "number" && x > 0 && x !== sentinelReportId)
+              : [];
+            for (const sibId of siblingIds) {
+              try {
+                const sib = await storage.getCrashReport(sibId);
+                if (!sib || sib.source !== "sentinel_auto") continue;
+                if (report.subAccountId == null || sib.subAccountId == null || sib.subAccountId !== report.subAccountId) continue;
+                await storage.mergeCrashReportData(
+                  sibId,
+                  { officialFlhsmv: { reportNumber: discoveredOfficialNumber, searchResult, detail: outcome.detail ?? null, fetchedAt: new Date().toISOString(), followUpReportId: reportId, fanOutFromSentinelReportId: sentinelReportId, source: "local_agent" } },
+                  { expectSource: "sentinel_auto", ...(report.subAccountId != null ? { expectSubAccountId: report.subAccountId } : {}), setStatus: "COMPLETED" }
+                );
+              } catch (sibErr: any) {
+                console.warn(`[LOCAL-AGENT] Sibling ${sibId} fan-out error: ${sibErr.message}`);
+              }
+            }
+          } else {
+            await storage.updateCrashReport(reportId, { errorLog: `[LINK-FAILED] Atomic merge rejected by guards` });
+          }
+        }
+      } catch (linkErr: any) {
+        console.warn(`[LOCAL-AGENT] Failed to link follow-up ${reportId} → sentinel ${sentinelReportId}: ${linkErr.message}`);
+      }
+    }
+  }
+
+  return { ok: true, action: "completed" };
+}
+
 async function processBatch(): Promise<number> {
   const locked = await storage.getAndLockPendingReports(MAX_CONCURRENT, WORKER_ID);
   if (locked.length === 0) return 0;
