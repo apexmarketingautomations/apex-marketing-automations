@@ -269,41 +269,48 @@ export async function registerRoutes(
       const { db } = await import("./db");
       const { sql } = await import("drizzle-orm");
 
-      // Claim eligible reports: sentinel_followup, PENDING/RETRY_LATER, unlocked,
-      // next_attempt_at passed, and crashDate ≥ 10 days ago (FLHSMV window).
-      // Uses a CTE + UPDATE RETURNING so the lock and return are atomic.
-      const rows = await db.execute<any>(sql`
-        WITH eligible AS (
-          SELECT id, report_number, data, sub_account_id
-          FROM crash_reports
-          WHERE source = 'sentinel_followup'
-            AND status IN ('PENDING', 'RETRY_LATER')
-            AND locked_at IS NULL
-            AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
-            AND (
-              CASE
-                WHEN data->>'crashDate' ~ '^\d{4}-\d{2}-\d{2}$'
-                  THEN (data->>'crashDate')::date
-                WHEN data->>'crashDate' ~ '^\d{2}/\d{2}/\d{4}$'
-                  THEN TO_DATE(data->>'crashDate', 'MM/DD/YYYY')
-                ELSE NULL
-              END
-            ) <= CURRENT_DATE - INTERVAL '10 days'
-          ORDER BY created_at ASC
-          LIMIT ${limit}
-          FOR UPDATE SKIP LOCKED
-        )
-        UPDATE crash_reports cr
-        SET locked_at = NOW(),
-            locked_by = 'local-agent',
-            status    = 'PROCESSING',
-            updated_at = NOW()
-        FROM eligible
-        WHERE cr.id = eligible.id
-        RETURNING cr.id, cr.report_number, cr.data, cr.sub_account_id
+      // Two-step claim: SELECT eligible IDs, then UPDATE by ID.
+      // Avoids CTE+FOR UPDATE SKIP LOCKED which doesn't behave reliably via
+      // the Neon HTTP adapter (each db.execute() is a single autocommit HTTP request).
+      const selectResult = await db.execute<any>(sql`
+        SELECT id, report_number, data, sub_account_id
+        FROM crash_reports
+        WHERE source = 'sentinel_followup'
+          AND status IN ('PENDING', 'RETRY_LATER')
+          AND locked_at IS NULL
+          AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
+          AND (
+            CASE
+              WHEN data->>'crashDate' ~ '^\d{4}-\d{2}-\d{2}$'
+                THEN (data->>'crashDate')::date
+              WHEN data->>'crashDate' ~ '^\d{2}/\d{2}/\d{4}$'
+                THEN TO_DATE(data->>'crashDate', 'MM/DD/YYYY')
+              ELSE NULL
+            END
+          ) <= CURRENT_DATE - INTERVAL '10 days'
+        ORDER BY created_at ASC
+        LIMIT ${limit}
       `);
 
-      const rawRows: any[] = Array.isArray(rows) ? rows : (rows as any).rows ?? [];
+      const selectRows: any[] = Array.isArray(selectResult) ? selectResult : (selectResult as any).rows ?? [];
+      if (selectRows.length === 0) {
+        return res.json({ ok: true, reports: [], count: 0 });
+      }
+
+      // Lock only rows still unclaimed (locked_at IS NULL guards against a concurrent claim).
+      const idList = selectRows.map((r: any) => Number(r.id)).join(",");
+      const updateResult = await db.execute<any>(sql`
+        UPDATE crash_reports
+        SET locked_at  = NOW(),
+            locked_by  = 'local-agent',
+            status     = 'PROCESSING',
+            updated_at = NOW()
+        WHERE id IN (${sql.raw(idList)})
+          AND locked_at IS NULL
+        RETURNING id, report_number, data, sub_account_id
+      `);
+
+      const rawRows: any[] = Array.isArray(updateResult) ? updateResult : (updateResult as any).rows ?? [];
       const reports = rawRows.map((r: any) => ({
         id:           r.id,
         reportNumber: r.report_number,
