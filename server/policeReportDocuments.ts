@@ -126,6 +126,7 @@ export async function findStoredPoliceReportByCrashReport(report: {
 
   try {
     await fs.access(document.storagePath);
+  // allow-silent-catch: a stale local-file pointer should fall back to live fetch or retry without noisy logs
   } catch {
     return null;
   }
