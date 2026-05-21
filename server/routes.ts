@@ -281,9 +281,9 @@ export async function registerRoutes(
           AND (next_attempt_at IS NULL OR next_attempt_at <= NOW())
           AND (
             CASE
-              WHEN data->>'crashDate' ~ '^\d{4}-\d{2}-\d{2}$'
+              WHEN data->>'crashDate' ~ '^\\d{4}-\\d{2}-\\d{2}$'
                 THEN (data->>'crashDate')::date
-              WHEN data->>'crashDate' ~ '^\d{2}/\d{2}/\d{4}$'
+              WHEN data->>'crashDate' ~ '^\\d{2}/\\d{2}/\\d{4}$'
                 THEN TO_DATE(data->>'crashDate', 'MM/DD/YYYY')
               ELSE NULL
             END
