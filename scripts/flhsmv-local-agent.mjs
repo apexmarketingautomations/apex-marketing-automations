@@ -220,10 +220,20 @@ function scoreCandidate(candidate, location, lat, lng, receivedTimestamp) {
 
 // ── FLHSMV API calls ─────────────────────────────────────────────────────────
 
+// Extract only the ASP.NET session token from the full cookie string.
+// The Akamai bot-management cookies (bm_sv, ak_bmsc) contain binary data
+// that can't be faithfully round-tripped through our AES decryption; sending
+// malformed Akamai tokens causes Akamai to return 503. The ASP.NET_SessionId
+// is the actual auth credential — Akamai passes residential IPs through freely.
+function sessionCookie(fullCookie) {
+  const m = fullCookie.match(/ASP\.NET_SessionId=[^;]+/);
+  return m ? m[0] : fullCookie;
+}
+
 const FLHSMV_HEADERS = (cookie) => ({
   "Content-Type":   "application/json",
   "Accept":         "application/json",
-  "Cookie":         cookie,
+  "Cookie":         sessionCookie(cookie),
   "Origin":         FLHSMV_BASE,
   "Referer":        `${FLHSMV_BASE}/crashreportrequest/`,
   "User-Agent":     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
