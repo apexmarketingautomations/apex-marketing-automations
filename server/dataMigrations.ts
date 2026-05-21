@@ -1131,9 +1131,8 @@ const MIGRATIONS: DataMigration[] = [
       --    that have a sourceExternalId (crash:<reportNumber>:acct<N>)
       UPDATE contacts
         SET incident_fingerprint = encode(
-              digest(
-                REGEXP_REPLACE(source_external_id, ':acct[0-9]+$', ''),
-                'sha256'
+              sha256(
+                REGEXP_REPLACE(source_external_id, ':acct[0-9]+$', '')::bytea
               ),
               'hex'
             )
