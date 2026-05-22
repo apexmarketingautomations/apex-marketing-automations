@@ -75,6 +75,20 @@ const CLERK_PORTALS: ClerkPortal[] = [
   { county: "CHARLOTTE", portalUrl: "https://www.charlotteclerk.com/court-records" },
 ];
 
+export interface ClerkTrafficStatus {
+  ready: boolean;
+  mode: "identity_recovery";
+  fetchesPoliceReportPdf: false;
+  fetchesTrafficCaseIdentity: true;
+  apifyConfigured: boolean;
+  actorConfigured: boolean;
+  schedulerStarted: boolean;
+  pollIntervalHours: number;
+  supportedCounties: Array<ClerkPortal["county"]>;
+  portals: ClerkPortal[];
+  note: string;
+}
+
 /** Charges that indicate the citation was issued at a vehicle crash. */
 const CRASH_CHARGE_PATTERNS = [
   "CRASH", "ACCIDENT", "CARELESS", "RECKLESS", "FAIL TO YIELD",
@@ -451,6 +465,27 @@ export async function matchCitationsToPlaceholders(
 // ── Scheduler ─────────────────────────────────────────────────────────────────
 
 let schedulerStarted = false;
+
+export function getClerkTrafficStatus(): ClerkTrafficStatus {
+  const apifyConfigured = !!resolveApifyToken();
+  const actorConfigured = !!(process.env.APIFY_CLERK_TRAFFIC_ACTOR_ID || "").trim();
+
+  return {
+    ready: apifyConfigured && actorConfigured,
+    mode: "identity_recovery",
+    fetchesPoliceReportPdf: false,
+    fetchesTrafficCaseIdentity: true,
+    apifyConfigured,
+    actorConfigured,
+    schedulerStarted,
+    pollIntervalHours: POLL_INTERVAL_MS / 3_600_000,
+    supportedCounties: CLERK_PORTALS.map((portal) => portal.county),
+    portals: CLERK_PORTALS,
+    note: actorConfigured
+      ? "Uses a browser actor against county clerk traffic case portals to recover defendant names and mailing addresses from public crash-related citations."
+      : "Scheduler is wired, but this lane stays a no-op until APIFY_CLERK_TRAFFIC_ACTOR_ID is configured with the Playwright clerk actor.",
+  };
+}
 
 export function startClerkTrafficScheduler(): void {
   if (schedulerStarted) {

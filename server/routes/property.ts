@@ -1238,10 +1238,12 @@ export function registerPropertyRoutes(app: Express) {
   app.get("/api/crash-reports/health", asyncHandler(async (req, res) => {
     const { getFLHSMVHealth } = await import("../crashReportWorker");
     const { getIngestStats } = await import("../crashIngestPipeline");
+    const { getClerkTrafficStatus } = await import("../clerkTrafficEnrich");
     const { db } = await import("../db");
     const { sql } = await import("drizzle-orm");
     const health = getFLHSMVHealth();
     const ingest = getIngestStats();
+    const clerkTraffic = getClerkTrafficStatus();
 
     // Optional sub-account scoping. If provided, the caller must own the
     // sub-account — the same rule the rest of the crash routes use.
@@ -1340,6 +1342,7 @@ export function registerPropertyRoutes(app: Express) {
         ...health,
         incident: flhsmvIncident,
       },
+      clerkTraffic,
       ingestPipeline: {
         latestPollTime: ingest.latestPollTime,
         lastSuccessfulIngest: ingest.lastSuccessfulIngest,

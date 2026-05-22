@@ -104,6 +104,36 @@ export async function linkCrashReportsToDocument(subAccountId: number, officialR
   return linkedIds;
 }
 
+export async function linkSpecificCrashReportsToDocument(
+  subAccountId: number,
+  crashReportIds: number[],
+  documentId: number,
+): Promise<number[]> {
+  const uniqueIds = Array.from(new Set(crashReportIds.map(Number).filter((id) => Number.isFinite(id) && id > 0)));
+  if (uniqueIds.length === 0) return [];
+
+  const rows = await db
+    .select({ id: crashReports.id })
+    .from(crashReports)
+    .where(and(
+      eq(crashReports.subAccountId, subAccountId),
+      inArray(crashReports.id, uniqueIds),
+    ));
+
+  const linkedIds = rows.map((row) => row.id);
+  if (linkedIds.length === 0) return [];
+
+  await db
+    .update(crashReports)
+    .set({
+      policeReportDocumentId: documentId,
+      updatedAt: new Date(),
+    })
+    .where(inArray(crashReports.id, linkedIds));
+
+  return linkedIds;
+}
+
 export async function findStoredPoliceReportByCrashReport(report: {
   policeReportDocumentId?: number | null;
   subAccountId?: number | null;
@@ -140,14 +170,19 @@ export async function findStoredPoliceReportByCrashReport(report: {
 
 export async function persistPoliceReportBinary(params: {
   subAccountId: number;
-  officialReportNumber: string;
+  officialReportNumber?: string | null;
+  documentKey?: string | null;
+  linkCrashReportIds?: number[];
   buffer: Buffer;
   mimeType?: string | null;
   originalFilename?: string | null;
   source?: string | null;
   metadata?: Record<string, unknown>;
 }): Promise<{ document: PoliceReportDocument; linkedCrashReportIds: number[]; fileUrl: string }> {
-  const officialReportNumber = params.officialReportNumber.trim();
+  const officialReportNumber = String(params.documentKey || params.officialReportNumber || "").trim();
+  if (!officialReportNumber) {
+    throw new Error("officialReportNumber or documentKey is required");
+  }
   const sha256 = crypto.createHash("sha256").update(params.buffer).digest("hex");
   const fileName = buildStoredFileName({
     officialReportNumber,
@@ -210,7 +245,9 @@ export async function persistPoliceReportBinary(params: {
     })
     .returning();
 
-  const linkedCrashReportIds = await linkCrashReportsToDocument(params.subAccountId, officialReportNumber, document.id);
+  const linkedCrashReportIds = Array.isArray(params.linkCrashReportIds) && params.linkCrashReportIds.length > 0
+    ? await linkSpecificCrashReportsToDocument(params.subAccountId, params.linkCrashReportIds, document.id)
+    : await linkCrashReportsToDocument(params.subAccountId, officialReportNumber, document.id);
   return { document, linkedCrashReportIds, fileUrl };
 }
 

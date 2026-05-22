@@ -1,0 +1,15 @@
+[
+  {
+    "caseNumber": "24-TR-012345",
+    "defendantName": "DOE, JANE",
+    "defendantAddress": "123 MAIN ST",
+    "defendantCity": "CAPE CORAL",
+    "defendantState": "FL",
+    "defendantZip": "33990",
+    "citationDate": "2026-05-20",
+    "county": "LEE",
+    "chargeText": "CARELESS DRIVING",
+    "citingAgency": "Cape Coral Police Department",
+    "offenseLocation": "DEL PRADO BLVD / PINE ISLAND RD"
+  }
+]

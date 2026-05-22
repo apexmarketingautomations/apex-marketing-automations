@@ -131,6 +131,111 @@ export async function registerRoutes(
     }
   });
 
+  // Lee Clerk candidate finder seed — exposes the minimal crash-derived search
+  // hints a local helper script needs to search CRI without a user session.
+  app.get("/api/admin/lee-clerk-search-seed/:crashReportId", async (req: any, res: any) => {
+    try {
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured" });
+      const headerVal = ((req.headers["x-admin-secret"] as string) || "").trim();
+      if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+
+      const crashReportId = Number(req.params.crashReportId);
+      if (!Number.isFinite(crashReportId) || crashReportId <= 0) {
+        return res.status(400).json({ error: "Invalid crashReportId" });
+      }
+
+      const { storage } = await import("./storage");
+      const report = await storage.getCrashReport(crashReportId);
+      if (!report) return res.status(404).json({ error: "Crash report not found" });
+
+      const data = report.data && typeof report.data === "string"
+        ? JSON.parse(report.data as string)
+        : (report.data || {});
+      const raw = report.rawPayload && typeof report.rawPayload === "string"
+        ? JSON.parse(report.rawPayload as string)
+        : (report.rawPayload || {});
+
+      const receivedRaw =
+        data?.received ||
+        raw?.received ||
+        raw?.date ||
+        raw?.receivedAt ||
+        null;
+
+      const parseSeedDate = (value: any): Date | null => {
+        if (!value) return null;
+        const direct = new Date(String(value));
+        if (!Number.isNaN(direct.getTime())) return direct;
+
+        const mmddyyyy = String(value).match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (mmddyyyy) {
+          const [, mm, dd, yyyy] = mmddyyyy;
+          const parsed = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+          return Number.isNaN(parsed.getTime()) ? null : parsed;
+        }
+        return null;
+      };
+
+      const formatForClerk = (date: Date): string => {
+        const mm = String(date.getMonth() + 1).padStart(2, "0");
+        const dd = String(date.getDate()).padStart(2, "0");
+        const yyyy = String(date.getFullYear());
+        return `${mm}/${dd}/${yyyy}`;
+      };
+
+      const baseDate = parseSeedDate(receivedRaw) || report.createdAt || new Date();
+      const dateFrom = new Date(baseDate);
+      dateFrom.setDate(dateFrom.getDate() - 1);
+      const dateTo = new Date(baseDate);
+      dateTo.setDate(dateTo.getDate() + 7);
+
+      const location =
+        data?.location ||
+        raw?.location ||
+        data?.detail?.CrashStreet ||
+        null;
+
+      const remarks =
+        data?.remarks ||
+        raw?.remarks ||
+        null;
+
+      const county =
+        data?.county ||
+        raw?.county ||
+        null;
+
+      const tokenStop = new Set(["NORTH","SOUTH","EAST","WEST","COUNTY","FLORIDA","ROAD","STREET","AVE","AVENUE","BLVD","BOULEVARD","DR","DRIVE","LN","LANE","WAY","THE","AND","AT","OF","FL"]);
+      const locationTokens = String(location || "")
+        .toUpperCase()
+        .split(/[\s,./#-]+/)
+        .map((token) => token.trim())
+        .filter((token) => token.length > 3 && !tokenStop.has(token))
+        .slice(0, 8);
+
+      res.json({
+        ok: true,
+        crashReportId: report.id,
+        reportNumber: report.reportNumber,
+        officialReportNumber: report.officialReportNumber ?? null,
+        subAccountId: report.subAccountId ?? null,
+        status: report.status,
+        county,
+        location,
+        remarks,
+        receivedRaw,
+        createdAt: report.createdAt,
+        searchDateFrom: formatForClerk(dateFrom),
+        searchDateTo: formatForClerk(dateTo),
+        suggestedCaseTypes: ["CriminalTraffic", "Traffic Infraction"],
+        locationTokens,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // FLHSMV session diagnostic — tests 4 ScrapingBee mode combinations and reports
   // cookie capture results without exposing actual cookie values.
   app.get("/api/admin/debug/flhsmv-session", async (req: any, res: any) => {
@@ -418,15 +523,37 @@ export async function registerRoutes(
 
       const crashReportId = req.body?.crashReportId ? Number(req.body.crashReportId) : null;
       const providedOfficial = String(req.body?.officialReportNumber ?? "").trim() || null;
+      const documentKey = String(req.body?.documentKey ?? "").trim() || null;
       const providedSubAccountId = req.body?.subAccountId ? Number(req.body.subAccountId) : null;
       const source = String(req.body?.source ?? "local_agent").trim() || "local_agent";
+      const linkCrashReportIds = (() => {
+        const raw = req.body?.linkCrashReportIds;
+        if (Array.isArray(raw)) {
+          return raw.map((value: any) => Number(value)).filter((id: number) => Number.isFinite(id) && id > 0);
+        }
+        if (typeof raw === "string" && raw.trim()) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              return parsed.map((value: any) => Number(value)).filter((id: number) => Number.isFinite(id) && id > 0);
+            }
+          } catch {
+            return raw
+              .split(",")
+              .map((value) => Number(value.trim()))
+              .filter((id) => Number.isFinite(id) && id > 0);
+          }
+        }
+        return [];
+      })();
 
       let subAccountId = providedSubAccountId;
       let officialReportNumber = providedOfficial;
 
-      if (crashReportId && (!subAccountId || !officialReportNumber)) {
+      if ((crashReportId || linkCrashReportIds.length > 0) && (!subAccountId || (!officialReportNumber && !documentKey))) {
         const { storage } = await import("./storage");
-        const report = await storage.getCrashReport(crashReportId);
+        const lookupReportId = crashReportId || linkCrashReportIds[0];
+        const report = await storage.getCrashReport(lookupReportId);
         if (!report) return res.status(404).json({ error: "Crash report not found" });
         subAccountId = subAccountId || report.subAccountId || null;
         officialReportNumber =
@@ -438,14 +565,20 @@ export async function registerRoutes(
           null;
       }
 
-      if (!subAccountId || !officialReportNumber) {
-        return res.status(400).json({ error: "subAccountId and officialReportNumber are required (or supply a crashReportId that resolves both)" });
+      const resolvedDocumentKey = documentKey || officialReportNumber;
+
+      if (!subAccountId || !resolvedDocumentKey) {
+        return res.status(400).json({ error: "subAccountId and officialReportNumber/documentKey are required (or supply crashReportId/linkCrashReportIds that resolve them)" });
       }
 
       const { persistPoliceReportBinary } = await import("./policeReportDocuments");
       const saved = await persistPoliceReportBinary({
         subAccountId,
         officialReportNumber,
+        documentKey: resolvedDocumentKey,
+        linkCrashReportIds: linkCrashReportIds.length > 0
+          ? linkCrashReportIds
+          : (crashReportId ? [crashReportId] : []),
         buffer: file.buffer,
         mimeType: file.mimetype,
         originalFilename: file.originalname,
@@ -454,6 +587,8 @@ export async function registerRoutes(
           uploadedAt: new Date().toISOString(),
           uploadedBy: source,
           crashReportId,
+          linkCrashReportIds,
+          documentKey: resolvedDocumentKey,
         },
       });
 

@@ -555,8 +555,8 @@ function ReportDetailView({ reportId, onBack }: { reportId: number; onBack: () =
                 <FileText size={14} className="text-cyan-400" /> Police Report PDF
               </h3>
               <p className="text-slate-400 text-xs mb-3">
-                Download the official HSMV 90006 police crash report (FLHSMV).
-                Local agency reports (LCSO, Cape Coral PD, Fort Myers PD) are typically available within 24–48 hours.
+                Download the stored report attached to this crash. If Apex has a local-agency or Lee Clerk case document saved,
+                that file is served first; otherwise the download falls back to the official FLHSMV report when available.
               </p>
               <a
                 href={`/api/crash-reports/${reportId}/pdf`}
@@ -691,8 +691,23 @@ interface DeliveryStats {
   scopedSubAccountId: number | null;
 }
 
+interface ClerkTrafficHealth {
+  ready: boolean;
+  mode: "identity_recovery";
+  fetchesPoliceReportPdf: false;
+  fetchesTrafficCaseIdentity: true;
+  apifyConfigured: boolean;
+  actorConfigured: boolean;
+  schedulerStarted: boolean;
+  pollIntervalHours: number;
+  supportedCounties: string[];
+  portals: Array<{ county: string; portalUrl: string }>;
+  note: string;
+}
+
 interface CrashHealthResponse {
   flhsmv: FLHSMVHealth;
+  clerkTraffic?: ClerkTrafficHealth;
   delivery?: DeliveryStats;
 }
 
@@ -733,6 +748,53 @@ function DeliveryHealthCard({ delivery }: { delivery: DeliveryStats }) {
           {Math.round(delivery.floor * 100)}%
         </span>
       </div>
+    </div>
+  );
+}
+
+function ClerkTrafficHealthCard({ lane }: { lane: ClerkTrafficHealth }) {
+  const tone = lane.ready
+    ? { bg: "bg-cyan-500/10", border: "border-cyan-500/30", text: "text-cyan-300", badge: "Ready" }
+    : { bg: "bg-violet-500/10", border: "border-violet-500/30", text: "text-violet-300", badge: "Needs actor setup" };
+
+  return (
+    <div
+      className={`${tone.bg} border ${tone.border} rounded-2xl p-4 md:p-5 mb-6`}
+      data-testid="card-clerk-traffic-health"
+    >
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div>
+          <p className="text-xs uppercase tracking-widest text-slate-400 font-bold">
+            Lee Clerk Backup Lane
+          </p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Public traffic-case identity recovery when FLHSMV is delayed or unavailable
+          </p>
+        </div>
+        <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded border ${tone.bg} ${tone.text} ${tone.border}`}>
+          {tone.badge}
+        </span>
+      </div>
+
+      <p className={`text-sm ${tone.text}`}>{lane.note}</p>
+
+      <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+        <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-slate-300">
+          Counties: {lane.supportedCounties.join(", ")}
+        </div>
+        <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-slate-300">
+          Scheduler: {lane.schedulerStarted ? `running every ${lane.pollIntervalHours}h` : "not started"}
+        </div>
+        <div className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-slate-300">
+          Scope: identity only, not police report PDFs
+        </div>
+      </div>
+
+      {!lane.ready && (
+        <p className="mt-3 text-xs text-slate-500">
+          Missing piece: configure the Apify browser actor id in Railway as <span className="text-slate-300 font-semibold">APIFY_CLERK_TRAFFIC_ACTOR_ID</span>.
+        </p>
+      )}
     </div>
   );
 }
@@ -1116,6 +1178,7 @@ export default function CrashReports() {
   return (
     <div className="p-4 md:p-6 lg:p-10 max-w-6xl mx-auto">
       {healthResponse?.flhsmv && <FLHSMVHealthBanner health={healthResponse.flhsmv} />}
+      {healthResponse?.clerkTraffic && <ClerkTrafficHealthCard lane={healthResponse.clerkTraffic} />}
       {healthResponse?.delivery && <DeliveryHealthCard delivery={healthResponse.delivery} />}
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-6 md:mb-8">

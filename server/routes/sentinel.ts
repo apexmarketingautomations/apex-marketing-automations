@@ -1501,6 +1501,7 @@ export function registerRetroSkipTraceRoute(app: any) {
       const { count, eq, and, isNotNull, lt } = await import("drizzle-orm");
       const { getFLHSMVHealth } = await import("../crashReportWorker");
       const { getVendorRunState, resolveBatchDataKey, resolveScrapingBeeKey, resolveNimbleCredentials } = await import("../vendorConfig");
+      const { getClerkTrafficStatus } = await import("../clerkTrafficEnrich");
 
       // Crash report queue depth by status
       const [pending, processing, complete, notFound, failed] = await Promise.all([
@@ -1530,6 +1531,7 @@ export function registerRetroSkipTraceRoute(app: any) {
 
       const flhsmvHealth = getFLHSMVHealth();
       const vendorState  = getVendorRunState();
+      const clerkTraffic = getClerkTrafficStatus();
 
       res.json({
         timestamp: new Date().toISOString(),
@@ -1538,6 +1540,7 @@ export function registerRetroSkipTraceRoute(app: any) {
           scrapingBee: { configured: !!resolveScrapingBeeKey() },
           nimble:      { configured: !!resolveNimbleCredentials() },
         },
+        clerkTraffic,
         flhsmv: {
           ...flhsmvHealth,
         },
