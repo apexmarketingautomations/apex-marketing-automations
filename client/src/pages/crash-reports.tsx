@@ -666,6 +666,17 @@ interface FLHSMVHealth {
   totalRequests: number;
   totalSuccesses: number;
   blockedCount: number;
+  incident?: {
+    active: boolean;
+    kind: string;
+    firstObservedOutageAt: string | null;
+    latestObservedOutageAt: string | null;
+    deferredFollowUps: number;
+    failedFollowUps: number;
+    note: string;
+    scope: "global" | "sub_account";
+    scopedSubAccountId: number | null;
+  };
 }
 
 interface DeliveryStats {
@@ -775,6 +786,8 @@ function FLHSMVHealthBanner({ health }: { health: FLHSMVHealth }) {
 
   const config = configs[health.status] || configs.degraded;
   const Icon = config.icon;
+  const incident = health.incident;
+  const isBackendOutage = incident?.kind === "search_backend_unavailable";
 
   return (
     <motion.div
@@ -786,7 +799,30 @@ function FLHSMVHealthBanner({ health }: { health: FLHSMVHealth }) {
       <Icon size={20} className={`${config.text} mt-0.5 shrink-0`} />
       <div>
         <p className={`font-bold text-sm ${config.text}`} data-testid="text-health-status">{config.label}</p>
-        <p className={`text-xs ${config.text} opacity-80 mt-0.5`}>{config.description}</p>
+        <p className={`text-xs ${config.text} opacity-80 mt-0.5`}>
+          {isBackendOutage
+            ? "The crash portal can still load, but the FLHSMV search backend is returning 503. Lookups are paused until it recovers."
+            : config.description}
+        </p>
+        {incident?.note && (
+          <p className="text-xs text-slate-400 mt-2">{incident.note}</p>
+        )}
+        {(incident?.firstObservedOutageAt || incident?.deferredFollowUps || incident?.failedFollowUps) && (
+          <div className="mt-2 space-y-1 text-xs text-slate-500">
+            {incident.firstObservedOutageAt && (
+              <p>First seen in Apex telemetry: {formatDate(incident.firstObservedOutageAt)}</p>
+            )}
+            {incident.latestObservedOutageAt && (
+              <p>Latest outage signal: {formatDate(incident.latestObservedOutageAt)}</p>
+            )}
+            {(incident.deferredFollowUps > 0 || incident.failedFollowUps > 0) && (
+              <p>
+                Queue impact: {incident.deferredFollowUps.toLocaleString()} deferred
+                {incident.failedFollowUps > 0 ? ` · ${incident.failedFollowUps.toLocaleString()} still failed` : ""}
+              </p>
+            )}
+          </div>
+        )}
         {health.lastErrorTime && (
           <p className="text-xs text-slate-500 mt-1">Last error: {formatDate(health.lastErrorTime)}</p>
         )}
@@ -1027,9 +1063,10 @@ export default function CrashReports() {
   });
 
   const { data: healthResponse } = useQuery<CrashHealthResponse>({
-    queryKey: ["/api/crash-reports/health"],
+    queryKey: ["/api/crash-reports/health", currentAccount?.id],
+    enabled: !!currentAccount?.id,
     queryFn: async () => {
-      const res = await fetch("/api/crash-reports/health");
+      const res = await fetch(`/api/crash-reports/health?subAccountId=${currentAccount!.id}`);
       if (!res.ok) throw new Error("Failed to fetch health");
       return res.json();
     },

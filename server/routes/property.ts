@@ -1238,6 +1238,8 @@ export function registerPropertyRoutes(app: Express) {
   app.get("/api/crash-reports/health", asyncHandler(async (req, res) => {
     const { getFLHSMVHealth } = await import("../crashReportWorker");
     const { getIngestStats } = await import("../crashIngestPipeline");
+    const { db } = await import("../db");
+    const { sql } = await import("drizzle-orm");
     const health = getFLHSMVHealth();
     const ingest = getIngestStats();
 
@@ -1255,6 +1257,77 @@ export function registerPropertyRoutes(app: Express) {
     }
 
     const delivery = await storage.getCrashDeliveryStats(scopedSubAccountId);
+    const scopeSql = scopedSubAccountId
+      ? sql`AND sub_account_id = ${scopedSubAccountId}`
+      : sql``;
+    const outageStatsResult = await db.execute(sql`
+      SELECT
+        MIN(updated_at) FILTER (
+          WHERE source = 'sentinel_followup'
+            AND (
+              error_log ILIKE '%HTTP 500%' OR
+              error_log ILIKE '%HTTP 503%' OR
+              error_log ILIKE '%Service unreachable%' OR
+              error_log ILIKE '%service failure%' OR
+              error_log ILIKE 'FLHSMV outage%'
+            )
+        ) AS first_outage_mark,
+        MAX(updated_at) FILTER (
+          WHERE source = 'sentinel_followup'
+            AND (
+              error_log ILIKE '%HTTP 500%' OR
+              error_log ILIKE '%HTTP 503%' OR
+              error_log ILIKE '%Service unreachable%' OR
+              error_log ILIKE '%service failure%' OR
+              error_log ILIKE 'FLHSMV outage%'
+            )
+        ) AS latest_outage_mark,
+        COUNT(*) FILTER (
+          WHERE source = 'sentinel_followup'
+            AND status = 'RETRY_LATER'
+            AND (
+              error_log ILIKE 'FLHSMV outage%' OR
+              error_log LIKE '[requeued-after-outage-deploy %'
+            )
+        )::int AS deferred_outage_rows,
+        COUNT(*) FILTER (
+          WHERE source = 'sentinel_followup'
+            AND status = 'FAILED'
+            AND official_report_number IS NULL
+            AND (
+              error_log ILIKE '%HTTP 500%' OR
+              error_log ILIKE '%HTTP 503%' OR
+              error_log ILIKE '%Service unreachable%' OR
+              error_log ILIKE '%service failure%'
+            )
+        )::int AS failed_outage_rows
+      FROM crash_reports
+      WHERE source = 'sentinel_followup'
+      ${scopeSql}
+    `);
+    const outageStatsRow = (Array.isArray(outageStatsResult) ? outageStatsResult[0] : outageStatsResult.rows?.[0]) as
+      | {
+          first_outage_mark?: string | Date | null;
+          latest_outage_mark?: string | Date | null;
+          deferred_outage_rows?: number | string | null;
+          failed_outage_rows?: number | string | null;
+        }
+      | undefined;
+
+    const flhsmvIncident = {
+      active: health.status === "down",
+      kind: health.status === "down" ? "search_backend_unavailable" : "historical_outage",
+      firstObservedOutageAt: outageStatsRow?.first_outage_mark ? new Date(outageStatsRow.first_outage_mark).toISOString() : null,
+      latestObservedOutageAt: outageStatsRow?.latest_outage_mark ? new Date(outageStatsRow.latest_outage_mark).toISOString() : null,
+      deferredFollowUps: Number(outageStatsRow?.deferred_outage_rows ?? 0),
+      failedFollowUps: Number(outageStatsRow?.failed_outage_rows ?? 0),
+      note: health.status === "down"
+        ? "Crash portal pages may still load, but the FLHSMV search backend is currently unavailable."
+        : "Recent outage telemetry is preserved here for recovery tracking.",
+      scope: scopedSubAccountId ? "sub_account" : "global",
+      scopedSubAccountId: scopedSubAccountId ?? null,
+    };
+
     // Flag drops in delivery rate so the next regression is caught fast.
     const HEALTHY_RATIO_FLOOR = 0.5;
     const deliveryHealthy =
@@ -1263,7 +1336,10 @@ export function registerPropertyRoutes(app: Express) {
         : delivery.deliveryRatio >= HEALTHY_RATIO_FLOOR;
 
     res.json({
-      flhsmv: health,
+      flhsmv: {
+        ...health,
+        incident: flhsmvIncident,
+      },
       ingestPipeline: {
         latestPollTime: ingest.latestPollTime,
         lastSuccessfulIngest: ingest.lastSuccessfulIngest,
