@@ -23,6 +23,8 @@ const MAX_SERVICE_FAILURES = 40;
 // FLHSMV official reports can take up to 10 days to appear after a crash
 const MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 const COOLDOWN_DURATION_MS = 2 * 60 * 1000;
+const OUTAGE_RETRY_BASE_MS = 30 * 60 * 1000;
+const OUTAGE_RETRY_JITTER_MS = 30 * 60 * 1000;
 const MAX_CONCURRENT = 5;
 // Within a single tick, keep pulling fresh batches until either the queue is
 // drained, FLHSMV health degrades, or we hit this cap (defence-in-depth so a
@@ -199,6 +201,34 @@ function isNetworkError(err: any): boolean {
   return msg.includes("abort") || msg.includes("timeout") || msg.includes("econnrefused") ||
     msg.includes("enotfound") || msg.includes("econnreset") || msg.includes("network") ||
     msg.includes("dns") || err.name === "AbortError";
+}
+
+function isFlhsmvOutage(statusCode?: number | null, message?: string | null): boolean {
+  if (statusCode === 502 || statusCode === 503) return true;
+  const text = (message || "").toLowerCase();
+  return text.includes("site is unavailable") ||
+    text.includes("unavailable at this time") ||
+    text.includes("service unavailable") ||
+    text.includes("bad gateway");
+}
+
+function nextOutageRetryAt(): Date {
+  return new Date(Date.now() + OUTAGE_RETRY_BASE_MS + Math.floor(Math.random() * OUTAGE_RETRY_JITTER_MS));
+}
+
+async function deferForFlhsmvOutage(
+  reportId: number,
+  errorLog: string,
+): Promise<{ ok: boolean; action: string }> {
+  const nextAttemptAt = nextOutageRetryAt();
+  await storage.updateCrashReport(reportId, {
+    status: "RETRY_LATER",
+    lockedAt: null,
+    lockedBy: null,
+    nextAttemptAt,
+    errorLog: `${errorLog} Retry after ${nextAttemptAt.toISOString()}`,
+  });
+  return { ok: true, action: "retry_later_outage" };
 }
 
 async function fetchWithRetry(url: string, options: RequestInit, retries = 2): Promise<Response> {
@@ -633,6 +663,15 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
         ? `FLHSMV returned HTTP ${searchResult.statusCode} — ${searchResult.message}`
         : searchResult.message;
 
+      if (isFlhsmvOutage(searchResult.type === "upstream_error" ? searchResult.statusCode : null, errorMsg)) {
+        console.log(`[CRASH-WORKER] Report ${reportNumber} deferred for FLHSMV outage`);
+        await deferForFlhsmvOutage(
+          reportId,
+          `FLHSMV outage during search: ${errorMsg}.`,
+        );
+        return;
+      }
+
       if (failCount >= MAX_SERVICE_FAILURES) {
         await storage.updateCrashReport(reportId, {
           status: "FAILED",
@@ -665,6 +704,15 @@ async function processReport(reportId: number, reportNumber: string): Promise<vo
       const errorMsg = detail.type === "upstream_error"
         ? `FLHSMV detail returned HTTP ${detail.statusCode} — ${detail.message}`
         : detail.message;
+
+      if (isFlhsmvOutage(detail.type === "upstream_error" ? detail.statusCode : null, errorMsg)) {
+        console.log(`[CRASH-WORKER] Report ${reportNumber} deferred for FLHSMV outage during detail fetch`);
+        await deferForFlhsmvOutage(
+          reportId,
+          `FLHSMV outage during detail fetch: ${errorMsg}.`,
+        );
+        return;
+      }
 
       if (failCount >= MAX_SERVICE_FAILURES) {
         await storage.updateCrashReport(reportId, {
@@ -981,6 +1029,13 @@ export async function completeReportFromExternalData(
   if (outcome.type === "upstream_error" || outcome.type === "network_error") {
     const failCount = (report.serviceFailureCount ?? 0) + 1;
     const errorMsg = outcome.errorMessage ?? `HTTP ${outcome.statusCode ?? 0}`;
+    if (isFlhsmvOutage(outcome.type === "upstream_error" ? outcome.statusCode : null, errorMsg)) {
+      await deferForFlhsmvOutage(
+        reportId,
+        `[local-agent] FLHSMV outage: ${errorMsg}.`,
+      );
+      return { ok: true, action: "retry_later_outage" };
+    }
     if (failCount >= MAX_SERVICE_FAILURES) {
       await storage.updateCrashReport(reportId, {
         status: "FAILED", lockedAt: null, lockedBy: null,

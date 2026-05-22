@@ -26,6 +26,7 @@ const FLHSMV_URL   = `${FLHSMV_BASE}/crashreportrequest/`;
 const BATCH_LIMIT  = 5;
 const MIN_SCORE    = 20;
 const INTER_DELAY  = 1500; // ms between reports
+const OUTAGE_MARKER = "We apologize for the inconvenience, our site is unavailable at this time.";
 
 function log(msg) {
   const t = new Date().toTimeString().slice(0, 8);
@@ -168,25 +169,23 @@ async function browserGetReport(page, reportNumber) {
   );
 }
 
+async function portalLooksHealthy(page, response) {
+  const status = response?.status?.() ?? 0;
+  const bodyText = await page.locator("body").innerText().catch(() => "");
+  const outage = status >= 500 || bodyText.includes(OUTAGE_MARKER);
+  if (outage) {
+    log(`FLHSMV portal unavailable (status=${status || "unknown"}) — skipping batch claim`);
+    if (bodyText) {
+      log(`Portal preview: ${bodyText.slice(0, 160).replace(/\s+/g, " ")}`);
+    }
+  }
+  return !outage;
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
   log("=== FLHSMV Playwright Agent ===");
-
-  log("Fetching pending batch from Railway...");
-  let reports;
-  try {
-    reports = await fetchPendingBatch();
-  } catch (e) {
-    log(`ERROR fetching batch: ${e.message}`);
-    process.exit(1);
-  }
-
-  if (reports.length === 0) {
-    log("No eligible reports — queue clear");
-    return;
-  }
-  log(`Claimed ${reports.length} report(s) from Railway`);
 
   log("Launching Chromium and navigating to FLHSMV...");
   const browser = await chromium.launch({
@@ -209,10 +208,27 @@ async function main() {
     });
 
     const page = await context.newPage();
-    await page.goto(FLHSMV_URL, { waitUntil: "networkidle", timeout: 60000 });
+    const response = await page.goto(FLHSMV_URL, { waitUntil: "networkidle", timeout: 60000 });
     await page.waitForTimeout(6000); // let Akamai JS challenge complete
 
-    log("Browser session ready — processing reports...");
+    if (!(await portalLooksHealthy(page, response))) {
+      return;
+    }
+
+    log("Browser session ready — fetching pending batch from Railway...");
+    let reports;
+    try {
+      reports = await fetchPendingBatch();
+    } catch (e) {
+      log(`ERROR fetching batch: ${e.message}`);
+      process.exit(1);
+    }
+
+    if (reports.length === 0) {
+      log("No eligible reports — queue clear");
+      return;
+    }
+    log(`Claimed ${reports.length} report(s) from Railway`);
 
     const results = [];
 
