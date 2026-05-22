@@ -82,6 +82,7 @@ interface ArrestSignalRow {
   chargeDescription: string | null;
   caseNumber:       string | null;
   filingDate:       Date | null;
+  county:           string | null;
   rawData:          any;
 }
 
@@ -356,7 +357,7 @@ export async function runCrashArrestMatch(opts: {
         if (daysDiff > MATCH_WINDOW_DAYS) return false;
       }
       return !crash.county || !s.id || // pass if no county to filter on
-             (String(s["county" as any] ?? "").toUpperCase() === crash.county?.toUpperCase());
+             (String(s.county ?? "").toUpperCase() === crash.county?.toUpperCase());
     });
 
     let bestScore  = -1;

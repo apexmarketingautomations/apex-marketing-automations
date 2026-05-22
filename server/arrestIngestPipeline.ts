@@ -594,7 +594,7 @@ export async function runArrestIngest(opts: {
     setImmediate(async () => {
       try {
         const { runCrashArrestMatch } = await import("./crashArrestMatcher");
-        const ingested = counties ?? [];
+        const ingested = countyStats.map(c => c.county);
         const matchStats = await runCrashArrestMatch({
           counties: ingested.length > 0 ? ingested : undefined,
           daysBack:  30,
