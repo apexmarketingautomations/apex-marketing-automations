@@ -2887,7 +2887,7 @@ export default function SiteBuilder() {
               style={{ minHeight: "800px", backgroundColor: siteData.theme?.bg || "#0a0a0a" }}
               data-testid="preview-canvas"
             >
-              {multiPageData && (
+              {multiPageData && !siteData?.vibeHtml && (
                 <NavHeaderSection
                   pages={multiPageData.pages}
                   activePageId={activePage?.id || ""}
@@ -2897,7 +2897,7 @@ export default function SiteBuilder() {
                 />
               )}
 
-              {isMultiPage && editMode && (
+              {isMultiPage && editMode && !siteData?.vibeHtml && (
                 <div className="flex items-center gap-1 px-4 py-2 bg-black/40 border-b border-white/10 overflow-x-auto">
                   {multiPageData?.pages.map((page) => (
                     <div key={page.id} className="flex items-center group">
@@ -2968,7 +2968,7 @@ export default function SiteBuilder() {
                 </div>
               )}
 
-              {!isMultiPage && editMode && (
+              {!isMultiPage && editMode && !siteData?.vibeHtml && (
                 <div className="flex items-center gap-1 px-4 py-2 bg-black/40 border-b border-white/10">
                   <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-indigo-600 text-white">
                     <FileText size={12} />
@@ -3001,7 +3001,18 @@ export default function SiteBuilder() {
                 </div>
               )}
 
-              {activeSections.map((section: any, i: number) => {
+              {siteData?.vibeHtml ? (
+                <iframe
+                  srcDoc={siteData.vibeHtml}
+                  title="Vibe Site Preview"
+                  className="w-full border-0"
+                  style={{ minHeight: "900px", display: "block" }}
+                  sandbox="allow-scripts allow-same-origin"
+                  data-testid="vibe-site-preview"
+                />
+              ) : null}
+
+              {!siteData?.vibeHtml && activeSections.map((section: any, i: number) => {
                 const Component = COMPONENT_MAP[section.type];
                 if (!Component) return null;
                 const props = { ...section.props, theme: siteData.theme };
@@ -3085,7 +3096,7 @@ export default function SiteBuilder() {
                 return <Component key={i} {...props} />;
               })}
 
-              {editMode && (
+              {editMode && !siteData?.vibeHtml && (
                 <div className="p-4 flex justify-center">
                   {addSectionOpen ? (
                     <motion.div
