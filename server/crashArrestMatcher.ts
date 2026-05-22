@@ -195,37 +195,47 @@ async function enrichContactFromBooking(
   ].filter((t): t is string => !!t);
 
   try {
-    await upsertContact({
-      subAccountId:     crash.subAccountId,
-      firstName,
-      lastName,
-      // Address from booking record — residential confidence 0.85 (sheriff booking)
-      ...(signal.subjectAddress?.trim()
-        ? {
-            address:           signal.subjectAddress.trim(),
-            addressConfidence: 0.85,
-            addressType:       "booking_record",
-          }
-        : {}),
-      // Phone only if booking record has one (rare but possible for court contacts)
-      ...(signal.subjectPhone?.trim()
-        ? {
-            phone:           signal.subjectPhone.trim(),
-            phoneSource:     "sheriff_booking",
-            phoneConfidence: 0.90,
-          }
-        : {}),
-      tags:             newTags,
-      notes:            bookingNote,
-      identityStatus:   "verified",
-      isPlaceholder:    false,
-      skipTraceStatus:  "source_matched",
-      viewClass:        "incident_subject",
-      workflowStage:    "enriching",
-      leadVertical:     "criminal_dui",
-      // Re-pass dedup fields so upsertContact finds the existing record
-      sourceExternalId: `crash:${crash.contactId}:arrest-match`,
-    } as any);
+    // Update the existing contact by ID — don't use upsertContact with a new
+    // sourceExternalId or it creates a duplicate instead of patching the crash contact.
+    const updateFields: Record<string, any> = {
+      first_name:        firstName,
+      last_name:         lastName,
+      identity_status:   "verified",
+      is_placeholder:    false,
+      skip_trace_status: "source_matched",
+      view_class:        "incident_subject",
+      workflow_stage:    "enriching",
+      lead_vertical:     "criminal_dui",
+      notes:             bookingNote,
+      updated_at:        new Date(),
+    };
+
+    if (signal.subjectAddress?.trim()) {
+      updateFields.address = signal.subjectAddress.trim();
+    }
+    if (signal.subjectPhone?.trim()) {
+      updateFields.phone            = signal.subjectPhone.trim();
+      updateFields.phone_source     = "sheriff_booking";
+      updateFields.phone_confidence = 0.90;
+    }
+
+    await db
+      .update(contacts)
+      .set(updateFields)
+      .where(eq(contacts.id, crash.contactId));
+
+    // Append tags without overwriting existing ones
+    await db.execute(sql`
+      UPDATE contacts
+      SET tags = (
+        SELECT array_agg(DISTINCT t) FROM unnest(
+          COALESCE(tags, ARRAY[]::text[]) || ${newTags}::text[]
+        ) AS t
+      )
+      WHERE id = ${crash.contactId}
+    `);
+
+    console.log(`[CRASH-ARREST] Enriched contact ${crash.contactId} → ${firstName} ${lastName}`);
     return { enriched: true, skipReason: null };
   } catch (err: any) {
     console.error(`[CRASH-ARREST] Enrichment failed for contact ${crash.contactId}:`, err?.message);

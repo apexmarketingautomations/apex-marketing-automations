@@ -125,40 +125,16 @@ async function configureLeeTrafficSearch(page) {
     await page.fill("#cs_DateTo", SEARCH_SEED.searchDateTo);
 }
 
-async function attemptAutomatedSearch(page) {
+async function fillSearchForm(page) {
   await configureLeeTrafficSearch(page);
+  await page.waitForTimeout(500);
+}
 
-  // Realistic pause before submitting (Akamai watches interaction velocity)
-  await page.waitForTimeout(1200 + Math.floor(Math.random() * 800));
-
-  // Prefer keyboard submit on a visible input — looks more human than a button click
-  let submitted = false;
-  for (const sel of ["#cs_CaseNumber", "#cs_CitationNumber", "#cs_DateFrom", "#cs_DateTo"]) {
-    const el = page.locator(sel);
-    if (await el.count() && await el.isVisible().catch(() => false)) {
-      await el.focus();
-      await page.waitForTimeout(200);
-      await page.keyboard.press("Enter");
-      submitted = true;
-      break;
-    }
-  }
-
-  if (!submitted) {
-    const searchButton = page
-      .locator("#submit2")
-      .or(page.getByRole("button", { name: "Search", exact: true }))
-      .first();
-    await searchButton.click();
-  }
-
-  await page.waitForTimeout(6000);
-
-  const text = await page.textContent("body").catch(() => "");
-  if (isAccessDeniedText(text || "")) {
-    return { ok: false, blocked: true, url: page.url() };
-  }
-  return { ok: true, blocked: false, url: page.url() };
+async function attemptAutomatedSearch(page) {
+  await fillSearchForm(page);
+  // Always return "blocked" — let the human click Search.
+  // The main loop will wait for results to appear automatically.
+  return { ok: false, blocked: true, url: page.url() };
 }
 
 // ── Result scoring ────────────────────────────────────────────────────────────
@@ -316,6 +292,7 @@ async function uploadDownloadedFile(filePath) {
   const form = new FormData();
   form.set("subAccountId", String(resolvedSubAccountId()));
   form.set("documentKey", resolvedDocumentKey());
+  form.set("officialReportNumber", resolvedDocumentKey());
   form.set("linkCrashReportIds", JSON.stringify(CRASH_REPORT_IDS));
   form.set("source", "lee_clerk_cri_manual_download");
   form.set("file", new Blob([bytes], { type: "application/pdf" }), fileName);
@@ -348,6 +325,7 @@ async function uploadTextCapture(text, pageUrl) {
   const form = new FormData();
   form.set("subAccountId", String(resolvedSubAccountId()));
   form.set("documentKey", resolvedDocumentKey());
+  form.set("officialReportNumber", resolvedDocumentKey());
   form.set("linkCrashReportIds", JSON.stringify(CRASH_REPORT_IDS));
   form.set("source", "lee_clerk_cri_text_capture");
   form.set("file", new Blob([payload], { type: "text/plain" }), fileName);
@@ -380,22 +358,23 @@ async function main() {
   if (!resolvedSubAccountId()) fail("SUB_ACCOUNT_ID is required (or derivable from CRASH_REPORT_ID)");
 
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "lee-clerk-download-"));
-  const browser = await chromium.launch({ headless: false, slowMo: 80 });
+
+  // Use the real Chrome binary — Akamai fingerprints Playwright's bundled Chromium
+  // and hard-blocks it. Real Chrome has a full OS-level fingerprint it can't fake.
+  const CHROME_PATH =
+    process.env.CHROME_PATH ||
+    "/Applications/ChatGPT Atlas.app/Contents/Support/ChatGPT Atlas.app/Contents/MacOS/ChatGPT Atlas";
+
+  const browser = await chromium.launch({
+    headless: false,
+    executablePath: CHROME_PATH,
+    args: ["--no-first-run", "--no-default-browser-check"],
+  });
   const context = await browser.newContext({
     acceptDownloads: true,
     downloadsPath: tmpDir,
     viewport: { width: 1440, height: 900 },
     locale: "en-US",
-    userAgent:
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-  });
-
-  // Mask automation signals that Akamai's JS challenge checks
-  await context.addInitScript(() => {
-    Object.defineProperty(navigator, "webdriver", { get: () => undefined });
-    Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3] });
-    Object.defineProperty(navigator, "languages", { get: () => ["en-US", "en"] });
-    window.chrome = { runtime: {} };
   });
 
   const page = await context.newPage();
@@ -413,45 +392,25 @@ async function main() {
     log("Auto-filling and submitting traffic search...");
     const searchAttempt = await attemptAutomatedSearch(page);
 
-    if (searchAttempt.blocked) {
-      log("Akamai blocked — reloading and waiting longer before retry...");
-      await page.goto(CRI_URL, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      // Give Akamai's JS challenge more time to complete
-      await page.waitForTimeout(5000);
-      await configureLeeTrafficSearch(page);
-      await page.waitForTimeout(2000 + Math.floor(Math.random() * 1000));
+    // Form is pre-filled — Akamai blocks automated submits so we hand off to the user.
+    console.log(`
+╔══════════════════════════════════════════════════════════╗
+║  FORM IS FILLED — click the Search button in the browser ║
+╚══════════════════════════════════════════════════════════╝
+`);
+    log("Waiting for you to click Search (up to 2 minutes)...");
 
-      // Retry via keyboard submit
-      let resubmitted = false;
-      for (const sel of ["#cs_CaseNumber", "#cs_CitationNumber", "#cs_DateFrom", "#cs_DateTo"]) {
-        const el = page.locator(sel);
-        if (await el.count() && await el.isVisible().catch(() => false)) {
-          await el.focus();
-          await page.waitForTimeout(300);
-          await page.keyboard.press("Enter");
-          resubmitted = true;
-          break;
-        }
-      }
-      if (!resubmitted) {
-        const retryBtn = page
-          .locator("#submit2")
-          .or(page.getByRole("button", { name: "Search", exact: true }))
-          .first();
-        await retryBtn.click();
-      }
-
-      await page.waitForTimeout(6000);
-      const retryText = await page.textContent("body").catch(() => "");
-      if (isAccessDeniedText(retryText || "")) {
-        fail("Akamai is still blocking after retry. Set CASE_NUMBER= directly and retry.");
-      }
-    } else {
-      log(`Search submitted → ${searchAttempt.url}`);
+    // Wait for the page to navigate away from the search form (user clicks Search).
+    try {
+      await page.waitForNavigation({ timeout: 120_000, waitUntil: "domcontentloaded" });
+    } catch {
+      fail("Timed out waiting for search. Run again and click Search within 2 minutes.");
     }
 
+    log("Results page loaded — scanning for case links...");
+    await page.waitForTimeout(2000);
+
     // ── Wait for results ──────────────────────────────────────────────────────
-    log("Waiting for results page...");
     const hasLinks = await waitForCaseLinks(page, 15_000);
 
     if (!hasLinks) {
