@@ -22,11 +22,13 @@ import { chromium } from "playwright";
 const RAILWAY_URL  = "https://apexmarketingautomations.com";
 const ADMIN_SECRET = "201120062017";
 const FLHSMV_BASE  = "https://services.flhsmv.gov";
-const FLHSMV_URL   = `${FLHSMV_BASE}/crashreportrequest/`;
+const FLHSMV_URL   = `${FLHSMV_BASE}/CrashReportPurchasing/`;
 const BATCH_LIMIT  = 5;
 const MIN_SCORE    = 20;
 const INTER_DELAY  = 1500; // ms between reports
 const OUTAGE_MARKER = "We apologize for the inconvenience, our site is unavailable at this time.";
+const HEALTHCHECK_COUNTY = "ALACHUA";
+const HEALTHCHECK_DATE = "2099-01-01";
 
 function log(msg) {
   const t = new Date().toTimeString().slice(0, 8);
@@ -182,6 +184,53 @@ async function portalLooksHealthy(page, response) {
   return !outage;
 }
 
+async function bootstrapPortalSession(page) {
+  const acceptButton = page.locator("form#LegalForm button.btn-accept");
+  if ((await acceptButton.count()) === 0) {
+    log("Legal accept form not present on portal landing page");
+    return false;
+  }
+
+  await acceptButton.click({ timeout: 5000 });
+  await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
+
+  if (!page.url().toLowerCase().includes("/crashreport/eligibility")) {
+    log(`Unexpected portal URL after legal accept: ${page.url()}`);
+    return false;
+  }
+
+  return true;
+}
+
+async function searchApiLooksHealthy(page) {
+  const result = await page.evaluate(
+    async ({ county, date }) => {
+      try {
+        const res = await fetch("/CRRService/api/CrashReport/SearchReport", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Accept": "application/json" },
+          body: JSON.stringify({ County: county, CrashDate: date }),
+        });
+        const text = await res.text();
+        return { status: res.status, ok: res.ok, bodyPreview: text.slice(0, 500) };
+      } catch (error) {
+        return { status: 0, ok: false, error: String(error) };
+      }
+    },
+    { county: HEALTHCHECK_COUNTY, date: HEALTHCHECK_DATE },
+  );
+
+  const preview = result.bodyPreview || result.error || "";
+  const unhealthy = !result.ok && (result.status >= 500 || preview.includes(OUTAGE_MARKER));
+  if (unhealthy) {
+    log(`FLHSMV search API unavailable after legal accept (status=${result.status || "unknown"})`);
+    if (preview) {
+      log(`Search API preview: ${preview.slice(0, 160).replace(/\s+/g, " ")}`);
+    }
+  }
+  return !unhealthy;
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -212,6 +261,14 @@ async function main() {
     await page.waitForTimeout(6000); // let Akamai JS challenge complete
 
     if (!(await portalLooksHealthy(page, response))) {
+      return;
+    }
+
+    if (!(await bootstrapPortalSession(page))) {
+      return;
+    }
+
+    if (!(await searchApiLooksHealthy(page))) {
       return;
     }
 
