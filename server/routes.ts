@@ -367,6 +367,43 @@ export async function registerRoutes(
   });
 
   // FLHSMV local agent — step 1: claim a batch of eligible sentinel_followup reports
+  // ── Crash–Arrest Matcher ──────────────────────────────────────────────────
+  // Cross-references unidentified crash contacts against sheriff arrest bookings.
+  // DUI/reckless/DWLS arrests within ±2 days of the crash date in the same county
+  // are scored and, when score ≥ 40, the contact is enriched with booking identity data.
+  app.post("/api/admin/crash-arrest-match", async (req: any, res: any) => {
+    try {
+      const adminSecret = process.env.STANDALONE_ADMIN_SECRET?.trim();
+      if (!adminSecret) return res.status(503).json({ error: "STANDALONE_ADMIN_SECRET not configured" });
+      const headerVal = ((req.headers["x-admin-secret"] as string) || "").trim();
+      if (headerVal !== adminSecret) return res.status(401).json({ error: "Unauthorized" });
+
+      const counties  = Array.isArray(req.body?.counties) ? req.body.counties as string[] : undefined;
+      const daysBack  = Number(req.body?.daysBack  ?? 90);
+      const dryRun    = Boolean(req.body?.dryRun   ?? false);
+      const limit     = Number(req.body?.limit     ?? 200);
+
+      // Respond immediately — the match run can take a few seconds
+      res.status(202).json({ ok: true, status: "accepted", counties: counties ?? "ALL", daysBack, dryRun });
+
+      setImmediate(async () => {
+        try {
+          const { runCrashArrestMatch } = await import("./crashArrestMatcher");
+          const stats = await runCrashArrestMatch({ counties, daysBack, dryRun, limit });
+          console.log(
+            `[CRASH-ARREST-ROUTE] Match run complete: scanned=${stats.crashContactsScanned} ` +
+            `matches=${stats.matchesFound} enriched=${stats.enriched}`
+          );
+        } catch (err: any) {
+          console.error("[CRASH-ARREST-ROUTE] Match run error:", err?.message);
+        }
+      });
+    } catch (err: any) {
+      console.error("[CRASH-ARREST-ROUTE]", err);
+      res.status(500).json({ ok: false, error: err?.message });
+    }
+  });
+
   // for the Mac to process through its residential IP (Akamai cannot block it).
   // Locks the returned rows immediately so Railway's own worker won't double-process.
   app.get("/api/admin/flhsmv-pending-batch", async (req: any, res: any) => {

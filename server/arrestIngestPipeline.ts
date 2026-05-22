@@ -588,6 +588,28 @@ export async function runArrestIngest(opts: {
   }
   console.log(`[ARREST-INGEST] ════════════════════════════════════════════════\n`);
 
+  // After every ingest, run crash–arrest matching to connect new bookings to
+  // any crash contacts from the same counties and date window.
+  if (totalInserted > 0) {
+    setImmediate(async () => {
+      try {
+        const { runCrashArrestMatch } = await import("./crashArrestMatcher");
+        const ingested = counties ?? [];
+        const matchStats = await runCrashArrestMatch({
+          counties: ingested.length > 0 ? ingested : undefined,
+          daysBack:  30,
+          limit:     500,
+        });
+        console.log(
+          `[ARREST-INGEST] Post-ingest crash–arrest match: ` +
+          `scanned=${matchStats.crashContactsScanned} matches=${matchStats.matchesFound} enriched=${matchStats.enriched}`
+        );
+      } catch (e: any) {
+        console.warn("[ARREST-INGEST] Post-ingest crash–arrest match error:", e?.message);
+      }
+    });
+  }
+
   return runStats;
 }
 
